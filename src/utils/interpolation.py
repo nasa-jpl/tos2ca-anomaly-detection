@@ -139,6 +139,27 @@ class CURATED:
         temp.LongName = self.longName
         temp.Units = self.units
         temp.FillValue= "-9999.0"
+
+        data_column = tmp_data[:, 2]
+        mask = data_column != -9999
+        valid_data = data_column[mask]
+
+        if valid_data.size > 0:
+            percentiles = np.percentile(valid_data, [10, 25, 50, 75, 90])
+            std_dev = np.std(valid_data)
+            min_val = np.min(valid_data)
+            max_val = np.max(valid_data)
+            mean_val = np.mean(valid_data)
+            
+        temp.Min = '%.3f' %(min_val)
+        temp.Max = '%.3f' %(max_val)
+        temp.Mean = '%.3f' %(mean_val)
+        temp.Std_dev = '%.3f' %(std_dev)
+        temp.percentile_10 = '%.3f' %(percentiles[0])
+        temp.percentile_25 = '%.3f' %(percentiles[1])
+        temp.percentile_50 = '%.3f' %(percentiles[2])
+        temp.percentile_75 = '%.3f' %(percentiles[3])
+        temp.percentile_90 = '%.3f' %(percentiles[4])
         
 
 class GRID:
@@ -204,7 +225,6 @@ def interpolator(jobID):
     db, cur = openDB()
 
     jobInfo = getJobInfo(cur, jobID)[0]
-    phdefJobID = getJobInfo(cur, jobInfo['phdefJobID'])[0]
     
     sql = 'SELECT location, type FROM output WHERE jobID=%s AND type IN ("masks", "hierarchy")'
     cur.execute(sql, (jobInfo['phdefJobID']))
