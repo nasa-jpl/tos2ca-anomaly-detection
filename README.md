@@ -2,6 +2,8 @@
 
 [![Language](https://img.shields.io/badge/python-3.9-blue)](#)
 
+The ``anomaly-detection`` library is part of the of the TOS2CA Project. For more information, visit the TOS2CA website at [https://nasa-jpl.github.io/tos2ca-documentation/](https://nasa-jpl.github.io/tos2ca-documentation/).
+
 This python library is responsible for:
 - Taking user input about an inequality, variables, temporal bounds, and geospatial bounds
 - Retrieving subsetted data matching that user input
@@ -46,7 +48,7 @@ Running the library in an end-to-end fashion requires the following steps:
 03. Run the curator, which will output a netCDF-4 file with the data for each anomaly at each time step.  Note that incronguities may exist beween the grids and timesteps between the data used in PhDef and the requested curator data.  See the metadata in the output curated data file for additional information on this.
 04. Upload the curated data file and JSON hierarchy file to S3.
 05. Run the curated file through the interpolater.  This will get the curated data on the same temporal and spatial resolution as the original mask data.  This way the user can compare them more easily.  This will also generate statistics in the metadata of the interpolated file.  The interpolated fill will also be stored in S3.
-05. E-Mail the user that their job is complete and send them the locatin of the S3 bucket with their job directory.
-06. Mark the job as ``'complete'`` in the database.
-07. User can make plots of individual anomalies at spcific timestamps using the interpolated file.
+06. E-Mail the user that their job is complete and send them the locatin of the S3 bucket with their job directory.
+07. Mark the job as ``'complete'`` in the database.
+08. User can make plots of individual anomalies at spcific timestamps using the interpolated file.
 The user can continue on to visualization tools, download the data, or exit the system here.
