@@ -1,4 +1,4 @@
-# Binder Examples  
+# Binder Examples of Plotting Interpolated Data
 
 [![Language](https://img.shields.io/badge/python-3.12-blue)](#) [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/nasa-jpl/tos2ca-anomaly-detection/binder-plot-interpolated-data)
 
