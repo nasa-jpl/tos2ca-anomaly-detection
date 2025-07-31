@@ -1,4 +1,6 @@
 """
+Note that ASCAT data is not currently setup to be run in a chunked
+fashion.
 1. Read table of content e.g. 47-ForTraCC-TOC.json (Nanomalies)
 2. Read output hierarchy, e.g. 47-ForTraCC-Mask-Output-Hierarchy.json
    This gives the netcdf output file group hierarchy. This is needed
@@ -15,6 +17,8 @@
     must be choosen among the anomalies existing for this mask. 
 6. Choose variable that must exist in the data curation dictionnary.
 7. Subset the variable using the different masks from step 3.
+8. Currently, data curated by this code does not support chunking and does not
+    go on to the interpolation stage.
 """
 import os, json, sys, pprint
 import s3fs
@@ -30,6 +34,7 @@ import netCDF4 as nc
 from collections import OrderedDict
 import warnings
 from utils.helpers import getCurationHierarchy
+from utils import tos2ca_secrets
 
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
@@ -243,7 +248,6 @@ class Curation:
     def get_group_names(self):
         """
         Mask-Output-Hierarchy file:
-        mohfile = "s3://tos2ca-dev1/47/47-ForTraCC-Mask-Output-Hierarchy.json"
         moh = self.get_json(mohfile)
         """
         moh = self.get_json(self.hierarchyFile) # set line 1471
@@ -1425,6 +1429,8 @@ class Curation:
         """
         curjobID: curation job ID (integer)
         """
+        secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+        bucketName = secret.get("bucket")
         jobInfo,_ = self.get_curation_information(curjobID)
         dataset = jobInfo['dataset']
         print(f"phenomenon definition job ID: {jobInfo['phdefJobID']}")
@@ -1446,13 +1452,15 @@ class Curation:
         uploadInfo['filename'] = ncfilename
         uploadInfo['type'] = 'curated subset'
         uploadInfo['startDateTime'] = jobInfo['startDate']
-        s3Upload(curjobID, uploadInfo, 'tos2ca-dev1', db, cur)
+        s3Upload(curjobID, uploadInfo, bucketName, db, cur)
 
         uploadInfo = {}
         uploadInfo['filename'] = '/data/tmp/%s-Curation-Hierarchy.json' % curjobID
-        uploadInfo['type'] = 'hierarchy'
+        uploadInfo['type'] = 'curated hierarchy'
         uploadInfo['startDateTime'] = jobInfo['startDate']
-        s3Upload(curjobID, uploadInfo, 'tos2ca-dev1', db, cur)
+        s3Upload(curjobID, uploadInfo, bucketName, db, cur)
+        updateStatus(db, cur, curjobID, 'complete')
+
         closeDB(db)
         return locs,data3t2,data_full
     

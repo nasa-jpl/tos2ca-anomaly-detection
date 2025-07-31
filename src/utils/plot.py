@@ -3,18 +3,22 @@ import json
 import matplotlib
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import cartopy.mpl.ticker as cticker
 import cartopy.crs as ccrs
 import numpy as np
 import random
 from shapely.geometry import Polygon
 import xarray as xr
 import s3fs
+import boto3
 
 from copy import deepcopy
 from datetime import datetime as dt
-from database.connection import openDB, closeDB, openCache
+from database.connection import openDB, closeDB
 from database.elasticache import getData
 from utils.s3 import s3Upload
+from database.queries import updateStatus
+from utils import tos2ca_secrets
 
 
 def get_anno_coords(lat, lon, mask):
@@ -69,18 +73,26 @@ def get_anno_coords(lat, lon, mask):
     return line_coords, bbox
 
 
-def mask_plot(jobID, bucketName):
+def mask_plot(jobID, chunkID):
     """
     Function to draw a plot showing ForTraCC masks plotted on top
     of the inequality variable
     :param jobID: the jobID we want to run the plots for
     :type jobID: int
-    :param bucketName: name of S3 bucket to write files to
-    :type bucketName: string
+    :param chunkID: chunkID we want to plot
+    :type chunkID: int
     """
     db, cur = openDB()
-    r = openCache()
-    data, jobInfo, start_time = getData(r, jobID)
+    updateStatus(db, cur, jobID, 'plotting')
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    bucketName = secret.get("bucket")
+    data = {}
+    tmp, jobInfo, start_time = getData(jobID, chunkID)
+    if len(data) == 0:
+        data = tmp
+    else:
+        data['images'].update(tmp['images'])
+
     sql = f'SELECT variable, dataset FROM jobs WHERE jobID={jobID}'
     cur.execute(sql)
     results = cur.fetchall()
@@ -107,12 +119,10 @@ def mask_plot(jobID, bucketName):
         lat = np.asarray(ds['lat'][:])
         lon = np.asarray(ds['lon'][:])
     grid_shape = (len(lat), len(lon))
-
     masks = dict()
     for timestamp in data['images'].keys():
         with xr.open_dataset(fs.open(maskFile, 'rb'), group=f'masks/{timestamp}') as ds:
             mask_indices = np.asarray(ds['mask_indices'][:])
-
         masks[timestamp] = np.zeros(grid_shape)
         for i, j, event_id in mask_indices:
             masks[timestamp][i, j] = event_id
@@ -237,12 +247,14 @@ def mask_plot(jobID, bucketName):
             'type': 'plot'
         }
         s3Upload(jobID, jobInfo, bucketName, db, cur)
+        updateStatus(db, cur, jobID, 'complete')
+
     closeDB(db)
 
     return
 
 
-def interpolated_plot(jobID, timestamp, anomalyID, bucketName):
+def interpolated_plot(jobID, timestamp, anomalyID):
     """
     This plotting function will plot a specific anomaly at a specific timestamp
     :param jobID: curated jobID
@@ -251,15 +263,15 @@ def interpolated_plot(jobID, timestamp, anomalyID, bucketName):
     :type: str
     :param anomalyID: ID of the anomaly to plot
     :type: int
-    :param bucket name: name of the S3 bucket you want to write the plot file to
-    :type: str
     """
     db, cur = openDB()
-    sql = f'SELECT j.variable, o.location FROM output o, jobs j WHERE j.jobID={jobID} AND j.jobID=o.jobID AND o.type="interpolated subset"'
+    sql = f'SELECT j.variable, o.location FROM output o, jobs j WHERE j.jobID={jobID} AND j.jobID=o.jobID AND o.type="interpolated subset" AND o.location LIKE "%/{jobID}-Interp%"'
     cur.execute(sql)
     results = cur.fetchone()
     location = results['location']
     variable = results['variable']
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    bucketName = secret.get("bucket")
 
     fs = s3fs.S3FileSystem()
     ds = xr.open_dataset(fs.open(location, 'rb'), group=timestamp + '/' + str(anomalyID))
@@ -298,3 +310,99 @@ def interpolated_plot(jobID, timestamp, anomalyID, bucketName):
     db.close()
 
     return
+
+def interpolated_plot_all(jobID, timestamp):
+    """
+    This plotting function will plot a specific anomaly at a specific timestamp
+    :param jobID: curated jobID
+    :type jobID: int
+    :param timestamp: timestamp to plot in YYYYMMMDDHHMM format
+    :type: str
+    """
+    db, cur = openDB()
+    sql = f'SELECT j.variable, o.location FROM output o, jobs j WHERE j.jobID={jobID} AND j.jobID=o.jobID AND o.type="interpolated subset" AND o.location LIKE "%/{jobID}-Interp%"'
+    cur.execute(sql)
+    results = cur.fetchone()
+    location = results['location']
+    variable = results['variable']
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    bucketName = secret.get("bucket")
+
+    sql = 'SELECT location, type FROM output WHERE jobID=%s AND type IN ("interpolated hierarchy")'
+    cur.execute(sql, jobID)
+    results = cur.fetchall()
+    print(results)
+    for result in results:
+        interpolatedHierarchyFile = result['location']
+
+    s3 = boto3.resource('s3')
+    interpolatedHierarchyFileParts = interpolatedHierarchyFile.split('/')
+    content_object = s3.Object(interpolatedHierarchyFileParts[2], '/'.join(interpolatedHierarchyFileParts[3:]))
+    file_content = content_object.get()['Body'].read().decode('utf-8')
+    interpolatedHierarchyInfo = json.loads(file_content)
+    anomaly_num = list(interpolatedHierarchyInfo[timestamp].keys())[:-1]
+    
+    fs = s3fs.S3FileSystem()
+
+    try:
+        lat_array = []
+        lon_array = []
+        interp_array = []  
+        
+        #loop over anomaly ids for plotting
+        for anomaly_id in anomaly_num:  
+                
+            print("processing anomaly id: ", anomaly_id)
+            ds = xr.open_dataset(fs.open(location, 'rb'), group=timestamp + '/' + anomaly_id)
+
+            data = ds[variable].values[...]
+            lat_array = np.append(lat_array, data[:, 0])
+            lon_array = np.append(lon_array, data[:, 1])
+                
+            data_array = np.where(data[:, 2]>=0, data[:, 2], np.nan)
+            interp_array = np.append(interp_array, data_array)
+        
+        plt.style.use(['seaborn-poster'])
+        fig = plt.figure(figsize=(20,20))
+        ax = plt.subplot(111, projection=ccrs.PlateCarree())
+        
+        plt.scatter(lon_array, lat_array, s = 2, c= interp_array, transform=ccrs.PlateCarree(), cmap = 'jet')
+        plt.colorbar(label = variable + ' ('+ds[variable].Units+')', orientation =  'horizontal', shrink = 0.4, pad = 0.06)
+
+        ax.set_yticks(np.arange(min(lat_array),max(lat_array), 5), crs=ccrs.PlateCarree())
+        lat_formatter = cticker.LatitudeFormatter()
+        ax.yaxis.set_major_formatter(lat_formatter)
+
+        ax.set_xticks(np.arange(min(lon_array),max(lon_array), 5), crs=ccrs.PlateCarree())
+        lon_formatter = cticker.LongitudeFormatter()
+        ax.xaxis.set_major_formatter(lon_formatter)
+            
+        ax.coastlines()
+
+        
+        plt.title('Interpolated '+variable+' - Time: '+timestamp)
+        plt.ylabel('Latitude (deg)')
+        plt.xlabel('Longitude (deg)')
+        fig.canvas.draw()
+        plt.tight_layout()
+        plotFile = '/data/tmp/' + str(jobID) + '_' + timestamp + '.png'
+        plt.savefig(plotFile)
+        plt.close()
+
+        jobInfo = {
+            'filename': plotFile,
+            'startDateTime': dt.strptime(timestamp, '%Y%m%d%H%M').strftime('%Y-%m-%d %H:%M:%S'),
+            'type': 'interpolated plot'
+        }
+        s3Upload(jobID, jobInfo, bucketName, db, cur)
+
+        db.close()
+        
+    except:
+        
+        print("Error with timestamp: " + timestamp)
+        
+    return
+
+
+

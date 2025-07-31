@@ -4,6 +4,7 @@ import base64
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from json.decoder import JSONDecodeError
 
+
 def get_secret(secret_name, region_name):
     """
     Function to retrieve information from AWS Secrets Manager
@@ -29,7 +30,7 @@ def get_secret(secret_name, region_name):
             # May be binary
             secret = base64.b64decode(response['SecretBinary'])
 
-        #Return the code as a dictionary
+        # Return the code as a dictionary
         return json.loads(secret)
     except NoCredentialsError:
         print("No Credentials supplied")
@@ -38,7 +39,8 @@ def get_secret(secret_name, region_name):
         print("Incomplete Credentials supplied")
         return None
     except JSONDecodeError:
-        return response['SecretString'] # The secret itself is not JSON.
+        return response['SecretString']  # The secret itself is not JSON.
     except Exception as e:
-        print("Error getting secret: {e}")
+        print(f"Error getting secret: {e}")
+
         return None

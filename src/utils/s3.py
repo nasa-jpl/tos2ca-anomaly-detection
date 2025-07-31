@@ -5,7 +5,7 @@ import pymysql
 import requests
 from datetime import datetime, timedelta
 from botocore.exceptions import ClientError
-
+from utils import tos2ca_secrets
 
 def s3Upload(jobID, info, bucketName, db, cur):
     """
@@ -49,8 +49,6 @@ def s3Upload(jobID, info, bucketName, db, cur):
 def s3Delete(jobID, bucketName, db, cur):
     """
     Utility to delete all files from a job in the TOS2CA S3 bucket
-    Must have your AWS credentials in ~/.aws/config for the profile 
-    you are trying to authenticate with
     :param jobID:  ID number of the job
     :type jobID: int
     :param bucketName: name of the S3 bucket
@@ -69,7 +67,7 @@ def s3Delete(jobID, bucketName, db, cur):
         fileKey = '/'.join(thisFile.split('/')[3:])
         try:
             response = s3Client.delete_object(Bucket=bucketName, Key=fileKey)
-            sql = 'DELETE FROM output SET jobID=%s, location=%s'
+            sql = 'DELETE FROM output WHERE jobID=%s AND location=%s'
             cur.execute(sql, (jobID, thisFile))
             db.commit()
             logging.info(response)
@@ -77,7 +75,45 @@ def s3Delete(jobID, bucketName, db, cur):
             logging.error(e)
             return False
         return True
-    
+
+def s3DeleteChunks(jobID, db, cur):
+    """
+    Utility to delete chunked files after they've been stitched together
+    :param jobID:  ID number of the job
+    :type jobID: int
+    :param db: A class with a pymysql Connection
+    :type db: class 'pymysql.connections.Connection'
+    :param cur: A class with a pymysql Cursor
+    :type cur: class 'pymysql.cursors.Cursor'
+    """
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    bucketName = secret.get("bucket")
+    session = boto3.Session()
+    s3Client = session.client('s3')
+    sql = 'SELECT chunkID FROM chunks WHERE jobID=%s'
+    cur.execute(sql, (jobID))
+    results = cur.fetchall()
+    for r in results:
+        sql = 'SELECT location FROM output WHERE jobID=%s AND location LIKE "s3://%s/%s/%s-%s-%%"'
+        cur.execute(sql, (jobID, bucketName, jobID, jobID, r['chunkID']))
+        fileList = cur.fetchall()
+        for f in fileList:
+            thisFile = f['location']
+            fileKey = '/'.join(thisFile.split('/')[3:])
+            print(fileKey)
+            try:
+                response = s3Client.delete_object(Bucket=bucketName, Key=fileKey)
+                sql = 'DELETE FROM output WHERE jobID=%s AND location=%s'
+                cur.execute(sql, (jobID, thisFile))
+                db.commit()
+                logging.info(response)
+                print('Deleted %s' % thisFile)
+            except ClientError as e:
+                logging.error(e)
+                print('Could not delete %s' % thisFile)
+
+    return
+
 def s3GetTemporaryCredentials(daac):
     """
     Gets temporary credentials from a DAAC for S3 access.  User must have a .netrc file 

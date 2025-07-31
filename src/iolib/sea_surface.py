@@ -7,10 +7,12 @@ import pandas as pd
 
 from datetime import datetime, timedelta
 from collections import OrderedDict as ODict
-from database.connection import openDB, closeDB, openCache
+from database.connection import openDB, closeDB
 from database.elasticache import setData
 from database.queries import getJobInfo, updateStatus
 from utils.s3 import s3GetTemporaryCredentials, checkReauth
+from utils.helpers import convertLons
+
 
 def getFileList(jobInfo, creds, location):
     # Compile a list of files
@@ -37,17 +39,19 @@ def getFileList(jobInfo, creds, location):
                     
     return files
 
-def sea_surface_reader(jobID):
+def sea_surface_reader(jobID, chunkID):
     """
     Function to read Sea Surface data from NASA's Earthdata Cloud (AWS S3)
     and prepare it for ForTraCC
     :param jobID: job ID to use to submit the request
     :type jobID: int
+    :param chunkID: chunk ID for the request
+    :type chunkID: int
     """
     db, cur = openDB()
-    updateStatus(db, cur, jobID, 'running')
-    jobInfo = getJobInfo(cur, jobID)[0]
-    r = openCache()
+    updateStatus(db, cur, jobID, 'reading')
+    updateStatus(db, cur, jobID, 'reading', chunkID=chunkID, jobStart=True)
+    jobInfo = getJobInfo(cur, jobID, chunkID)[0]
 
     # Retrieve the credentials and location
     with open('/data/code/data-dictionaries/tos2ca-phdef-dictionary.json') as phdef:
@@ -59,7 +63,7 @@ def sea_surface_reader(jobID):
 
     if len(files) == 0:
         print('No results found. Exiting...')
-        updateStatus(db, cur, jobID, 'error')
+        updateStatus(db, cur, jobID, 'failed')
         exit(1)
 
     # Retrieve the job attributes
@@ -84,7 +88,8 @@ def sea_surface_reader(jobID):
             ds = xr.open_dataset(s3_file_obj)
             # Longitude is in 0-360 coordinaters so we need to convert that from the 
             # -180 to 180 that the job polygon bounds are in to get xarray to slice correctly
-            ds = ds.sel(Latitude=slice(min_lat,max_lat), Longitude=slice(min_lon+180,max_lon+180))
+            min_fix_lon, max_fix_lon = convertLons(min_lon, max_lon)
+            ds = ds.sel(Latitude=slice(min_lat, max_lat), Longitude=slice(min_fix_lon, max_fix_lon))
             if ds['Latitude'].values.size == 0 or ds['Longitude'].values.size == 0:
                 print('Warning: no valid lats or lons in file %s' % filename)
                 continue
@@ -95,7 +100,7 @@ def sea_surface_reader(jobID):
                 data['name'] = jobInfo['dataset']
                 data['lat'] = np.asarray(ds.Latitude.values)
                 # Longitude is in 0-360, but we need to convert that to -180 to 180 for ForTraCC
-                data['lon'] = np.asarray(ds.Longitude.values-180)
+                data['lon'] = np.asarray((ds.Longitude + 180) % 360 - 180)
                 data['images'] = ODict()
             # Time is a single value for entire value which is # days since start
             times = ds['Time']
@@ -110,7 +115,8 @@ def sea_surface_reader(jobID):
     if len(data['images']) == 0:
         exit('No data in bounds after file reads.')
 
+    setData(data, jobInfo, start_time, jobID, chunkID)
+    updateStatus(db, cur, jobID, 'complete', chunkID=chunkID, jobEnd=True)
     closeDB(db)
-    setData(r, data, jobInfo, start_time, jobID)
 
     return

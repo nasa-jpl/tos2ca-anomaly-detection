@@ -1,33 +1,30 @@
 import pymysql
-import os
-import redis
+from valkey import ValkeyCluster
 from utils import tos2ca_secrets
+
 
 def openDB():
     """
     This will open a connection to the MySQL database
+    Pulls authentication info from AWS Secrets Manager
     :return db: A class with a pymysql Connection
     :type db: class 'pymysql.connections.Connection'
     :return cur: A class with a pymysql Cursor
     :type cur: class 'pymysql.cursors.Cursor'
     """
-    user   = os.getenv('DBUSERNAME')
-    passwd = os.getenv('DBPASSWORD')
-    if user is None:
-        secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
-        if secret:
-            user   = secret.get("username")
-            passwd = secret.get("password")
-            host   = secret.get("host")
-        else:
-            print("Failed to retrieve database login info from secrets")
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    if secret:
+        user   = secret.get("username")
+        passwd = secret.get("password")
+        host   = secret.get("host")
+        db     = secret.get("db")
     else:
-        host = "tos2cadev1.ctznfzbiztp3.us-west-2.rds.amazonaws.com"
+        print("Failed to retrieve database login info from secrets")
 
     db = pymysql.connect(host=host,
                          user=user,
                          passwd=passwd,
-                         db="tos2ca")
+                         db=db)
     cur = db.cursor(pymysql.cursors.DictCursor)
     return (db, cur)
 
@@ -40,13 +37,22 @@ def closeDB(db):
     """
     db.close()
 
+
 def openCache():
     """
     This will connect to the AWS Elasitcache host
-    :return r: A class with a Redis connection
-    :type r: class edis.client.Redis
+    :return r: A class with a Valkey connection
+    :type r: class valkey.client.Valkey
     """
-    r = redis.Redis(host="master.tos2ca1.5khw6z.usw2.cache.amazonaws.com", 
-                    port=6379, 
-                    db=0)
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    if secret:
+        host = secret.get("rhost")
+        port = secret.get("rport")
+        db   = secret.get("rdb")
+    else:
+        print("Failed to retrieve Elasticache login info from secrets")
+    r = ValkeyCluster(host=host,
+              port=port,
+              ssl=True,
+              socket_timeout=1200)
     return r
