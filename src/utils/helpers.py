@@ -1,8 +1,12 @@
 import json
 import netCDF4 as nc
 import s3fs
+import pandas as pd
 import shapely.wkt as wkt
+import numpy as np
 
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from operators.inequalities import *
 
 
@@ -56,19 +60,24 @@ def getFortraccHierarchy(filename):
 
     return jsonFilename
 
-def getCurationHierarchy(jobID, info):
+def getCurationHierarchy(jobID, chunkID, info):
     """
     Function to read a curated file and create a json 
     file of the internal hierarchy.  This will be laid out in the same way
     as in the ForTraCC repo README.md file
     :param jobID: jobID of the curation job
-    :type filename: int
+    :type jobID: int
+    :param chunkID: chunkID of the curation job
+    :type jobID: int
     :param info: the dictionary of group names and variables from the curator
     :type info: dict
-    :return fortraccHierarchyFile: filename of the JSON hierarchy file, with path
-    :type fortraccHierarchyFile: str
+    :return jsonFilename: filename of the JSON hierarchy file, with path
+    :type jsonFilename: str
     """
-    jsonFilename = '/data/tmp/%s-Curation-Hierarchy.json' % jobID
+    if chunkID == None:
+        jsonFilename = '/data/tmp/%s-Curation-Hierarchy.json' % (jobID)
+    else:
+        jsonFilename = '/data/tmp/%s-%s-Curation-Hierarchy.json' % (jobID, chunkID)
 
     info['navigation'] = ['lat', 'lon']
 
@@ -77,11 +86,38 @@ def getCurationHierarchy(jobID, info):
 
     return jsonFilename
 
+def getInterpolationHierarchy(jobID, chunkID, info):
+    """
+    Function to read a interpolated file and create a json 
+    file of the internal hierarchy.  This will be laid out in the same way
+    as in the ForTraCC repo README.md file
+    :param jobID: jobID of the curation job
+    :type jobID: int
+    :param chunkID: chunkID for the job
+    :type chunkID: int
+    :param info: the dictionary of group names and variables from the curator
+    :type info: dict
+    :return jsonFilename: filename of the JSON hierarchy file, with path
+    :type jsonFilename: str
+    """
+    if chunkID == None:
+        jsonFilename = '/data/tmp/%s-Interpolation-Hierarchy.json' % (jobID)
+    else:
+        jsonFilename = '/data/tmp/%s-%s-Interpolation-Hierarchy.json' % (jobID, chunkID)
+
+    info['navigation'] = ['lat', 'lon']
+
+    with open(jsonFilename, 'w') as outfile:
+        json.dump(info, outfile)
+
+    return jsonFilename
+
+
 def get_json(filename):
     """
     Gets data from JSON files and returns it in dict format
     :param filename: filename of the JSON dictionary
-    :type jobID: str
+    :type filename: str
     :return j: JSON data from the file
     :rtype j: dict
     """
@@ -89,6 +125,46 @@ def get_json(filename):
     with fs.open(filename, 'r') as f:
         j = json.load(f)
     return j
+
+def padTimestamps(timestamps, intervalInfo, first=False, last=False):
+    """
+    Takes the timestamp info from the PhDef heirarcy file and 
+    add a timestamp at the beginning and end, to return an
+    udated dict.
+    :param timestamps: timestamps from hierarch file
+    :type timestamps: dict
+    :param intervalInfo: indicates months, days, hours, or minutes and quantity of each like {'units':'minutes', 'quantity': 10}
+    :type intervalInfo: dict
+    :param fist: include a new first timestamp
+    :type first: bool
+    :param
+    :rtype timestampsNew: timestamps with an additional timestamp at the beginning and end
+    :type timestampsNew: dict 
+    """
+    firstTimestamp = datetime.strptime(list(timestamps.keys())[0], '%Y%m%d%H%M')
+    lastTimestamp = datetime.strptime(list(timestamps.keys())[-1], '%Y%m%d%H%M')
+    if intervalInfo['units'] == 'months':
+        timeChange = relativedelta(months=intervalInfo['quantity'])
+    elif intervalInfo['units'] == 'days':
+        timeChange = timedelta(days=intervalInfo['quantity'])
+    elif intervalInfo['units'] == 'hours':
+        timeChange = timedelta(hours=intervalInfo['quantity'])
+    elif intervalInfo['units'] == 'minutes':
+        timeChange = timedelta(minutes=intervalInfo['quantity'])
+    else:
+        exit('Bad time interval name')
+    newFirst = (firstTimestamp - timeChange).strftime('%Y%m%d%H%M')
+    newLast = (lastTimestamp + timeChange).strftime('%Y%m%d%H%M')
+    newFirstDict = { newFirst: ['mask_indices']}
+    newLastDict = { newLast: ['mask_indices']}
+    timestampsNew = {}
+    if first:
+        timestampsNew.update(newFirstDict)
+    timestampsNew.update(timestamps)
+    if last:
+        timestampsNew.update(newLastDict)
+
+    return timestampsNew
 
 def gridPolygons(lat, lon, latResolution, lonResolution):
     """
@@ -123,7 +199,7 @@ def gridPolygons(lat, lon, latResolution, lonResolution):
 def pushBox(value, mp):
     """
     This function is used by the data curators to ensure that there are enough points
-    along the edges of the anomly bounding box for spatial interpolation.  It pushes the
+    along the edges of the anomaly bounding box for spatial interpolation.  It pushes the
     bounding box out X degress on each side of the bounding box.  That number of degrees
     is dependant on the spatial resolution of the input dataset.  It returns 'pushed' 
     bounds that are then used to retrieve the data for curation.
@@ -147,3 +223,51 @@ def pushBox(value, mp):
     max_lat = max_lat + value
 
     return (min_lon, min_lat, max_lon, max_lat)
+
+def timerange(startDate, endDate, interval):
+    """ 
+    Function to give a list of dates between two dates (inclusive)
+    :param startDate: start of the range
+    :type startDate: datetime
+    :param endDate: end of the range
+    :type endDate: datetime
+    :param interval: the internval of the data set (hourly, monthly, etc.)
+    :type interval: str
+    :return dateRange: range of dates
+    :rtype dateRange: list of datetimes
+    """
+    drange = pd.date_range(start=startDate.strftime('%Y-%m-%dT%H:%M:%S.%fZ'), end=endDate.strftime('%Y-%m-%dT%H:%M:%S.%fZ'), freq=interval)
+    dateRange = []
+    for i in drange:
+        dateRange.append(i.to_pydatetime().replace(tzinfo=None))
+
+    return dateRange
+
+
+def convertLons(minLon, maxLon):
+    """
+    This function will convert longitude in -180 to 180
+    format into 0 to 360, returning the min and lax lons 
+    in that format.
+    :param minLon: minimum longitude in -180 to 180 format
+    :type minLon: float
+    :param maxLon: maximum longitude in -180 to 180 format
+    :type maxLon: float
+    :return convertedMinLon: minimum longitude in 0 to 360 format
+    :rtype convertedMinLon: float
+    :return convertedMaxLon: maximum longitude in 0 to 360 format
+    :type maxLconvertedMaxLon: float
+    """
+    lonRange = np.arange(minLon, maxLon+1, 1.0)
+    convertedLons = []
+    for thisLon in lonRange:
+        if thisLon == 180.0:
+            fixed = 360.0
+        else:
+            fixed = (thisLon + 360) % 360
+        convertedLons.append(fixed)
+    
+    convertedMinLon = min(convertedLons)
+    convertedMaxLon = max(convertedLons)        
+
+    return (convertedMinLon, convertedMaxLon)

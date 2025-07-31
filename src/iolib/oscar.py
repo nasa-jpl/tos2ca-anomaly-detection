@@ -6,10 +6,13 @@ import netCDF4 as nc
 
 from datetime import datetime, timedelta
 from database.connection import openDB, closeDB
-from utils.helpers import pushBox, getCurationHierarchy
+from utils.helpers import pushBox, getCurationHierarchy, padTimestamps
 from database.queries import getJobInfo, updateStatus
-from utils.s3 import s3GetTemporaryCredentials, s3Upload
-from shapely import MultiPoint
+from utils.s3 import s3GetTemporaryCredentials, s3Upload, checkReauth
+from shapely.geometry import MultiPoint
+from utils import tos2ca_secrets
+from utils.helpers import convertLons
+
 
 def getFileList(phdefJobInfo, creds, location):
     """
@@ -23,8 +26,8 @@ def getFileList(phdefJobInfo, creds, location):
     :return files: list of files found on the S3 location
     :rtype files: list
     """
-    endDate = phdefJobInfo['endDate'] + timedelta(days=1)
-    startDate = phdefJobInfo['startDate'] - timedelta(days=1)
+    endDate = phdefJobInfo['endDate'] + timedelta(days=2)
+    startDate = phdefJobInfo['startDate'] - timedelta(days=2)
     timeDelta = endDate - startDate
     days = []
     for i in range(timeDelta.days + 1):
@@ -47,7 +50,7 @@ def getFileList(phdefJobInfo, creds, location):
 def get_json(filename):
     """
     :param filename: filename of the JSON dictionary
-    :type jobID: str
+    :type filename: str
     :return j: JSON data from the file
     :rtype j: dict
     """
@@ -73,24 +76,31 @@ def rounder(t):
     return [minusT.strftime('%Y%m%d%H%M%S'), originalT.strftime('%Y%m%d%H%M%S'), plusT.strftime('%Y%m%d%H%M%S')]
 
 
-def oscar_curator(jobID):
+def oscar_curator(jobID, chunkID):
     """
-    :param jobID: curation jobID
+    Function to cruate data for OSCAR.
+    This will read data from S3, and subset it to the bounds of the anomaly.  It provides
+    data for three time steps (t-1, t, t+1) to make sure there is data for temporal interpolation.
+    :param jobID: curation jobID 
     :type jobID: int
+    :param chunkID: curation chunkID
+    :type chunkID: int
     """
     db, cur = openDB()
     updateStatus(db, cur, jobID, 'running')
-    jobInfo = getJobInfo(cur, jobID)[0]
+    updateStatus(db, cur, jobID, 'subsetting', chunkID=chunkID, jobStart=True)
+    jobInfo = getJobInfo(cur, jobID, chunkID)[0]
     phdefJobInfo = getJobInfo(cur, jobInfo['phdefJobID'])[0]
     dataset = jobInfo['dataset']
+    nChunks = jobInfo['nChunks']
 
     with open('/data/code/data-dictionaries/tos2ca-data-collection-dictionary.json') as curDict:
         info = json.load(curDict)
     daac = info[dataset]['daac']
     creds = s3GetTemporaryCredentials(daac)
     location = info[dataset]['location']
-    startDate = phdefJobInfo['startDate']
-    endDate = phdefJobInfo['endDate']
+    startDate = jobInfo['startDate']
+    endDate = jobInfo['endDate']
     timeStep = info[dataset]['timeStep']
     coords = phdefJobInfo['coords']
     variable = jobInfo['variable']
@@ -117,7 +127,7 @@ def oscar_curator(jobID):
     closeDB(db)
 
     #Open the NetCDF-4 file; set global attributes
-    ncFilename = '/data/tmp/%s-Curated-Data.nc4' % jobID
+    ncFilename = '/data/tmp/%s-%s-Curated-Data.nc4' % (jobID, chunkID)
     ncFile = nc.Dataset(ncFilename , 'w', format='NETCDF4')
     ncFile.Variable = variable
     ncFile.Dataset = dataset
@@ -158,9 +168,26 @@ def oscar_curator(jobID):
     hierarchyInfo = get_json(hierarchyFile)
     lastMaskGroupName = ''
     curationHierarchy = {}
-    for h in hierarchyInfo['masks']:
+    hTimes = hierarchyInfo['masks']
+    hierarchyTimes = {}
+    for thisHTime in hTimes.keys():
+        ht = datetime.strptime(thisHTime, '%Y%m%d%H%M')
+        if ht >= startDate and ht <= endDate:
+            hierarchyTimes[thisHTime] = ['mask_indices']
+    if chunkID == 1 and nChunks > 1:
+        newTimestamps = padTimestamps(hierarchyTimes, {'units':'days','quantity':1}, first=True)
+    elif chunkID == nChunks and nChunks > 1:
+        newTimestamps = padTimestamps(hierarchyTimes, {'units':'days','quantity':1}, last=True)
+    elif nChunks == 1:
+        newTimestamps = padTimestamps(hierarchyTimes, {'units':'days','quantity':1}, first=True, last=True)
+    else:
+        newTimestamps = padTimestamps(hierarchyTimes, {'units':'days','quantity':1})
+    print(newTimestamps)
+    for h in newTimestamps:
         #get temp creds for each time so that you don't time out
-        creds = s3GetTemporaryCredentials(daac)
+        newCredsNeeded = checkReauth(creds)
+        if newCredsNeeded == 1:
+            creds = s3GetTemporaryCredentials(daac)
         #Read the mask file
         print('Using mask time: %s' % h)
         threeTimes = rounder(h)
@@ -177,7 +204,14 @@ def oscar_curator(jobID):
         maskGroup = ncFile.createGroup(maskGroupName + '-' + inc)
         maskGroup.MaskTime = h
         maskGroup.MaskFileName = 'Anomaly masks from %s' % maskFile
-        ds = xr.open_dataset(fs.open(maskFile, 'rb'), group='masks/' + h)
+        readH = h
+        if chunkID == 1 and h == list(newTimestamps.keys())[0]:
+            readH = list(newTimestamps.keys())[1]
+        elif chunkID == nChunks and h == list(newTimestamps.keys())[-1]:
+            readH = list(newTimestamps.keys())[-2]
+        else:
+            readH = h
+        ds = xr.open_dataset(fs.open(maskFile, 'rb'), group='masks/' + readH)
         mask_indices = np.asarray(ds['mask_indices'][:])
         anomalies = []
         for a in ds.mask_indices:
@@ -211,11 +245,16 @@ def oscar_curator(jobID):
             oscarFileList = []
             for thisTime in threeTimes:
                 mTime = datetime.strptime(thisTime, '%Y%m%d%H%M%S').strftime('%Y%m%d')
+                print(mTime)
                 print(files)
                 print(mTime)
                 mFile = list(filter(lambda x: mTime in x, files))[0]
                 print(mFile)
                 oscarFileList.append(mFile)
+                # check credentials so you don't time out
+                newCredsNeeded = checkReauth(creds)
+                if newCredsNeeded == 1:
+                    creds = s3GetTemporaryCredentials(daac)
                 fs_s3 = s3fs.S3FileSystem(anon=False, 
                                     key=creds['accessKeyId'], 
                                     secret=creds['secretAccessKey'], 
@@ -224,7 +263,22 @@ def oscar_curator(jobID):
                     ds = xr.open_dataset(s3_file_obj)
                     min_lon, min_lat, max_lon, max_lat = pushBox(0.5, mp)
                     sliceTime = datetime.strptime(thisTime, '%Y%m%d%H%M%S').strftime('%Y-%m-%d %H:%M:%S')
-                    data = ds.sel(time=slice(sliceTime,sliceTime),longitude=slice( np.where(ds.lon == round((min_lon+180)*4)/4)[0][0], np.where(ds.lon == round((max_lon+180)*4)/4)[0][0]), latitude=slice( np.where(ds.lat == round((min_lat)*4)/4)[0][0], np.where(ds.lat == round((max_lat)*4)/4)[0][0]))
+                    #OSCAR longitudes are 0-360
+                    min_fix_lon, max_fix_lon = convertLons(min_lon, max_lon)
+                    min_lat = round(min_lat * 4) / 4
+                    max_lat = round(max_lat * 4) / 4
+                    min_fix_lon = round(min_fix_lon * 4) / 4
+                    max_fix_lon = round(max_fix_lon * 4) / 4
+                    if min_fix_lon <= 0.0:
+                        min_fix_lon = 0.0
+                    if max_fix_lon >= 360.0:
+                        max_fix_lon = 359.75
+                    print(sliceTime)
+                    print(min_fix_lon)
+                    print(max_fix_lon)
+                    print(min_lat)
+                    print(max_lat)
+                    data = ds.sel(time=slice(sliceTime,sliceTime),longitude=slice(np.where(ds.lon == min_fix_lon)[0][0], np.where(ds.lon == max_fix_lon)[0][0]), latitude=slice(np.where(ds.lat == min_lat)[0][0], np.where(ds.lat == max_lat)[0][0]))
                     cLat = data.lat
                     cLon = data.lon
                     cVar = data[variable]
@@ -236,7 +290,9 @@ def oscar_curator(jobID):
                     for t, thisTime in enumerate(cTime):
                         for i, thisLon in enumerate(cLon):
                             for j, thisLat in enumerate(cLat):
-                                indices.append([thisLat, thisLon, data[variable].values[t][i][j]])
+                                #OSCAR longitudes are 0-360; adjust back to +/- 180
+                                fixLon = ((thisLon + 180) % 360) - 180
+                                indices.append([thisLat, fixLon, data[variable].values[t][i][j]])
                         variableData.append(indices) 
             variableData = np.asarray(variableData)
             print(variableData)
@@ -261,19 +317,23 @@ def oscar_curator(jobID):
 
     ncFile.close()
 
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    bucketName = secret.get("bucket")
+
     db, cur = openDB()
+
     uploadInfo = {}
     uploadInfo['filename'] = ncFilename
     uploadInfo['type'] = 'curated subset'
     uploadInfo['startDateTime'] = startDate
-    s3Upload(jobID, uploadInfo, 'tos2ca-dev1', db, cur)
+    s3Upload(jobID, uploadInfo, bucketName, db, cur)
 
-    jsonFilename = getCurationHierarchy(jobID, curationHierarchy)
+    jsonFilename = getCurationHierarchy(jobID, chunkID, curationHierarchy)
     uploadInfo = {}
     uploadInfo['filename'] = jsonFilename
-    uploadInfo['type'] = 'hierarchy'
+    uploadInfo['type'] = 'curated hierarchy'
     uploadInfo['startDateTime'] = startDate
-    s3Upload(jobID, uploadInfo, 'tos2ca-dev1', db, cur)
+    s3Upload(jobID, uploadInfo, bucketName, db, cur)
     closeDB(db)
 
     return

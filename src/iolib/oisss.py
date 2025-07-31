@@ -7,7 +7,7 @@ import pandas as pd
 
 from datetime import datetime, timedelta 
 from collections import OrderedDict as ODict
-from database.connection import openDB, closeDB, openCache
+from database.connection import openDB, closeDB
 from database.elasticache import setData
 from database.queries import getJobInfo, updateStatus
 from utils.s3 import s3GetTemporaryCredentials, checkReauth
@@ -49,17 +49,19 @@ def getFileList(phdefJobInfo, creds, location):
                     
     return files
 
-def oisss_reader(jobID):
+def oisss_reader(jobID, chunkID):
     """
     Function to read OISSS data from NASA's Earthdata Cloud (AWS S3)
     and prepare it for ForTraCC
     :param jobID: job ID to use to submit the request
     :type jobID: int
+    :param chunkID: chunk ID for the request
+    :type chunkID: int
     """
     db, cur = openDB()
-    updateStatus(db, cur, jobID, 'running')
-    jobInfo = getJobInfo(cur, jobID)[0]
-    r = openCache()
+    updateStatus(db, cur, jobID, 'reading')
+    updateStatus(db, cur, jobID, 'reading', chunkID=chunkID, jobStart=True)
+    jobInfo = getJobInfo(cur, jobID, chunkID)[0]
 
     # Retrieve credentials and location
     with open('/data/code/data-dictionaries/tos2ca-phdef-dictionary.json') as phdef:
@@ -71,7 +73,7 @@ def oisss_reader(jobID):
 
     if len(files) == 0:
         print('No results found. Exiting...')
-        updateStatus(db, cur, jobID, 'error')
+        updateStatus(db, cur, jobID, 'failed')
         exit(1)
 
     # Retrieve the job attributes 
@@ -118,8 +120,9 @@ def oisss_reader(jobID):
         exit('No data in bounds after file reads.')
     if len(data['images']) == 0:
         exit('No data in bounds after file reads.')  
-                  
-    closeDB(db)
-    setData(r, data, jobInfo, start_time, jobID)
     
+    setData(data, jobInfo, start_time, jobID, chunkID)
+    updateStatus(db, cur, jobID, 'complete', chunkID=chunkID, jobEnd=True)          
+    closeDB(db)
+
     return

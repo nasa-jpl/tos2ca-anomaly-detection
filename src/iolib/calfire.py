@@ -1,12 +1,12 @@
 import numpy as np
 import json
 import netCDF4 as nc
-import os
 import shapely
 from pyproj import Transformer
-from shapely import wkt 
+from shapely import wkt
 from shapely.geometry import Point, shape
 from datetime import datetime
+
 
 def calfire_reader(calfireGJ):
     """
@@ -85,7 +85,7 @@ def calfire_reader(calfireGJ):
             ncFile.FileFormat = 'NetCDF-4/HDF-5'
             ncFile.DataResolution = '0.005 x 0.005'
             ncFile.InputDataset = 'California Fire Perimeters (all)'
-            ncFile.InputSource = 'https://gis.data.ca.gov/datasets/CALFIRE-Forestry::california-fire-perimeters-all-1/'
+            ncFile.InputSource = 'https://gis.data.ca.gov/datasets/CALFIRE-Forestry::california-fire-perimeters-all'
             ncFile.InputFilename = 'California_Fire_Perimeters_7897608464518632307.geojson'
             try:
                 ncFile.ALARM_DATE = properties['ALARM_DATE']

@@ -3,19 +3,19 @@ import numpy as np
 import s3fs
 import shapely.wkt as wkt
 import xarray as xr
-import pandas as pd
 import netCDF4 as nc
 
 from datetime import datetime, timedelta
 from collections import OrderedDict as ODict
-from database.connection import openDB, closeDB, openCache
+from database.connection import openDB, closeDB
 from database.elasticache import setData
 from database.queries import getJobInfo, updateStatus
 from utils.s3 import s3GetTemporaryCredentials, s3Upload, checkReauth
-from utils.helpers import get_json, pushBox, getCurationHierarchy
-from shapely import MultiPoint
+from utils.helpers import get_json, pushBox, getCurationHierarchy, padTimestamps
+from shapely.geometry import MultiPoint
+from utils import tos2ca_secrets
 
-def getFileList(phdefJobInfo, creds, location):
+def getFileList(phdefJobInfo, creds, location, stage):
     """
     Function to get a list of files from the S3 location
     :param phdefJobInfo: phdef dictionary info for this data set
@@ -24,12 +24,17 @@ def getFileList(phdefJobInfo, creds, location):
     :type creds: dict
     :param location: the S3 URI for this dataset
     :type location: str
+    :param stage: TOS2CA stage (either 'phdef' or 'curation')
     :return files: list of files found on the S3 location
     :rtype files: list
     """
     # Compile a list of files
-    endDate = phdefJobInfo['endDate'] + timedelta(days=1)
-    startDate = phdefJobInfo['startDate'] - timedelta(days=1)
+    if stage == "curation":
+        endDate   = phdefJobInfo['endDate'] + timedelta(days=2)
+        startDate = phdefJobInfo['startDate'] - timedelta(days=2)
+    else:
+        endDate   = phdefJobInfo['endDate']
+        startDate = phdefJobInfo['startDate']
     timeDelta = endDate - startDate
     days = []
     for i in range(timeDelta.days + 1):
@@ -69,18 +74,19 @@ def rounder(t):
 
     return [minusT.strftime('%Y%m%d%H%M%S'), originalT.strftime('%Y%m%d%H%M%S'), plusT.strftime('%Y%m%d%H%M%S')]
 
-def ecco_reader(jobID):
+def ecco_reader(jobID, chunkID):
     """
     Function to read ECCO data from NASA's Earthdata Cloud (AWS S3)
     and prepare it for ForTraCC
     :param jobID: job ID to use to submit the request
     :type jobID: int
+    :param chunkID: chunk ID for chunk
+    :type chunkID: int
     """
     db, cur = openDB()
-    updateStatus(db, cur, jobID, 'running')
-    r = openCache()
-
-    jobInfo = getJobInfo(cur, jobID)[0]
+    updateStatus(db, cur, jobID, 'reading')
+    updateStatus(db, cur, jobID, 'reading', chunkID=chunkID, jobStart=True)
+    jobInfo = getJobInfo(cur, jobID, chunkID)[0]
    
    # GET THE CREDITIALS
     with open('/data/code/data-dictionaries/tos2ca-phdef-dictionary.json') as phdef:
@@ -89,11 +95,11 @@ def ecco_reader(jobID):
     creds = s3GetTemporaryCredentials(daac)
 
     # Create a list of files
-    files = getFileList(jobInfo, creds, info[jobInfo['dataset']]['location'])
+    files = getFileList(jobInfo, creds, info[jobInfo['dataset']]['location'], 'phdef')
 
     if len(files) == 0:
         print('No results found. Exiting...')
-        updateStatus(db, cur, jobID, 'error')
+        updateStatus(db, cur, jobID, 'failed')
         exit(1)
     
 
@@ -140,32 +146,37 @@ def ecco_reader(jobID):
     if len(data['images']) == 0:
         exit('No data in bounds after file reads.')
     
+    setData(data, jobInfo, start_time, jobID, chunkID)
+    updateStatus(db, cur, jobID, 'complete', chunkID=chunkID, jobEnd=True)
     closeDB(db)
-    setData(r, data, jobInfo, start_time, jobID)
 
     return
 
-def ecco_curator(jobID):
+def ecco_curator(jobID, chunkID):
     """
     Function to cruate data for ECCO.
     This will read data from S3, and subset it to the bounds of the anomaly.  It provides
     data for three time steps (t-1, t, t+1) to make sure there is data for temporal interpolation.
     :param jobID: curation jobID
     :type jobID: int
+    :param chunkID: curation chunkID
+    :type chunkID: int
     """
     db, cur = openDB()
     updateStatus(db, cur, jobID, 'running')
-    jobInfo = getJobInfo(cur, jobID)[0]
+    updateStatus(db, cur, jobID, 'subsetting', chunkID=chunkID, jobStart=True)
+    jobInfo = getJobInfo(cur, jobID, chunkID)[0]
     phdefJobInfo = getJobInfo(cur, jobInfo['phdefJobID'])[0]
     dataset = jobInfo['dataset']
+    nChunks = jobInfo['nChunks']
 
     with open('/data/code/data-dictionaries/tos2ca-data-collection-dictionary.json') as curDict:
         info = json.load(curDict)
     daac = info[dataset]['daac']
     creds = s3GetTemporaryCredentials(daac)
     location = info[dataset]['location']
-    startDate = phdefJobInfo['startDate']
-    endDate = phdefJobInfo['endDate']
+    startDate = jobInfo['startDate']
+    endDate = jobInfo['endDate']
     timeStep = info[dataset]['timeStep']
     coords = phdefJobInfo['coords']
     variable = jobInfo['variable']
@@ -187,13 +198,13 @@ def ecco_curator(jobID):
             hierarchyFile = result['location']
     print(startDate)
     print(endDate)
-    files = getFileList(phdefJobInfo, creds, location)
+    files = getFileList(phdefJobInfo, creds, location, 'curation')
     print(files)
     closeDB(db)
 
     #Open the NetCDF-4 file; set global attributes
-    ncFilename = '/data/tmp/%s-Curated-Data.nc4' % jobID
-    ncFile = nc.Dataset(ncFilename , 'w', format='NETCDF4')
+    ncFilename = '/data/tmp/%s-%s-Curated-Data.nc4' % (jobID, chunkID)
+    ncFile = nc.Dataset(ncFilename, 'w', format='NETCDF4')
     ncFile.Variable = variable
     ncFile.Dataset = dataset
     ncFile.Units = units
@@ -233,7 +244,22 @@ def ecco_curator(jobID):
     hierarchyInfo = get_json(hierarchyFile)
     lastMaskGroupName = ''
     curationHierarchy = {}
-    for h in hierarchyInfo['masks']:
+    hTimes = hierarchyInfo['masks']
+    hierarchyTimes = {}
+    for thisHTime in hTimes.keys():
+        ht = datetime.strptime(thisHTime, '%Y%m%d%H%M')
+        if ht >= startDate and ht <= endDate:
+            hierarchyTimes[thisHTime] = ['mask_indices']
+    if chunkID == 1 and nChunks > 1:
+        newTimestamps = padTimestamps(hierarchyTimes, {'units':'days','quantity':1}, first=True)
+    elif chunkID == nChunks and nChunks > 1:
+        newTimestamps = padTimestamps(hierarchyTimes, {'units':'days','quantity':1}, last=True)
+    elif nChunks == 1:
+        newTimestamps = padTimestamps(hierarchyTimes, {'units':'days','quantity':1}, first=True, last=True)
+    else:
+        newTimestamps = padTimestamps(hierarchyTimes, {'units':'days','quantity':1})
+    print(newTimestamps)
+    for h in newTimestamps:
         #get temp creds for each time so that you don't time out
         newCredsNeeded = checkReauth(creds)
         if newCredsNeeded == 1:
@@ -254,7 +280,14 @@ def ecco_curator(jobID):
         maskGroup = ncFile.createGroup(maskGroupName + '-' + inc)
         maskGroup.MaskTime = h
         maskGroup.MaskFileName = 'Anomaly masks from %s' % maskFile
-        ds = xr.open_dataset(fs.open(maskFile, 'rb'), group='masks/' + h)
+        readH = h
+        if chunkID == 1 and h == list(newTimestamps.keys())[0]:
+            readH = list(newTimestamps.keys())[1]
+        elif chunkID == nChunks and h == list(newTimestamps.keys())[-1]:
+            readH = list(newTimestamps.keys())[-2]
+        else:
+            readH = h
+        ds = xr.open_dataset(fs.open(maskFile, 'rb'), group='masks/' + readH)
         mask_indices = np.asarray(ds['mask_indices'][:])
         anomalies = []
         for a in ds.mask_indices:
@@ -292,6 +325,10 @@ def ecco_curator(jobID):
                 mFile = list(filter(lambda x: mTime in x, files))[0]
                 print(mFile)
                 eccoFileList.append(mFile)
+                # check credentials so you don't time out
+                newCredsNeeded = checkReauth(creds)
+                if newCredsNeeded == 1:
+                    creds = s3GetTemporaryCredentials(daac)
                 fs_s3 = s3fs.S3FileSystem(anon=False, 
                                     key=creds['accessKeyId'], 
                                     secret=creds['secretAccessKey'], 
@@ -318,8 +355,8 @@ def ecco_curator(jobID):
             print(variableData)
             maskGroup.InputFiles = ','.join(eccoFileList)
 
-            #write anomaly to the netCDF-4
-            #not filtering for quality, seems to only be experimental quality filter recommendations
+            # write anomaly to the netCDF-4
+            # not filtering for quality, seems to only be experimental quality filter recommendations
             if len(variableData) != 0:
                 observationDim = ncFile[maskGroupName + '-' + inc][anomalyGroupName].createDimension('observation', None)
                 dataPointDim = ncFile[maskGroupName + '-' + inc][anomalyGroupName].createDimension('data_point', 3)
@@ -337,20 +374,23 @@ def ecco_curator(jobID):
 
     ncFile.close()
 
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    bucketName = secret.get("bucket")
+
     db, cur = openDB()
 
     uploadInfo = {}
     uploadInfo['filename'] = ncFilename
     uploadInfo['type'] = 'curated subset'
     uploadInfo['startDateTime'] = startDate
-    s3Upload(jobID, uploadInfo, 'tos2ca-dev1', db, cur)
+    s3Upload(jobID, uploadInfo, bucketName, db, cur)
 
-    jsonFilename = getCurationHierarchy(jobID, curationHierarchy)
+    jsonFilename = getCurationHierarchy(jobID, chunkID, curationHierarchy)
     uploadInfo = {}
     uploadInfo['filename'] = jsonFilename
-    uploadInfo['type'] = 'hierarchy'
+    uploadInfo['type'] = 'curated hierarchy'
     uploadInfo['startDateTime'] = startDate
-    s3Upload(jobID, uploadInfo, 'tos2ca-dev1', db, cur)
+    s3Upload(jobID, uploadInfo, bucketName, db, cur)
 
     closeDB(db)
 

@@ -3,11 +3,10 @@ import numpy as np
 import s3fs
 import shapely.wkt as wkt
 import xarray as xr
-import pandas as pd
 
 from datetime import datetime, timedelta
 from collections import OrderedDict as ODict
-from database.connection import openDB, closeDB, openCache
+from database.connection import openDB, closeDB
 from database.elasticache import setData
 from database.queries import getJobInfo, updateStatus
 from utils.s3 import s3GetTemporaryCredentials, checkReauth
@@ -25,8 +24,8 @@ def getFileList(phdefJobInfo, creds, location):
     :return files: list of files found on the S3 location
     :rtype files: list
     """
-    endDate = phdefJobInfo['endDate'] + timedelta(days=1)
-    startDate = phdefJobInfo['startDate'] - timedelta(days=1)
+    endDate = phdefJobInfo['endDate'] 
+    startDate = phdefJobInfo['startDate']
     timeDelta = endDate - startDate
     days = []
     for i in range(timeDelta.days + 1):
@@ -48,17 +47,19 @@ def getFileList(phdefJobInfo, creds, location):
     return files
 
 
-def mur_reader(jobID):
+def mur_reader(jobID, chunkID):
     """
     Function to read MUR data from NASA's Earthdata Cloud (AWS S3)
     and prepare it for ForTraCC
     :param jobID: job ID to use to submit the request
     :type jobID: int
+    :param chunkID: chunk ID for the request
+    :type chunkID: int
     """
     db, cur = openDB()
-    updateStatus(db, cur, jobID, 'running')
-    jobInfo = getJobInfo(cur, jobID)[0]
-    r = openCache()
+    updateStatus(db, cur, jobID, 'reading')
+    updateStatus(db, cur, jobID, 'reading', chunkID=chunkID, jobStart=True)
+    jobInfo = getJobInfo(cur, jobID, chunkID)[0]
 
     # GET THE CREDENTIALS AND LOCATION
     with open('/data/code/data-dictionaries/tos2ca-phdef-dictionary.json') as phdef:
@@ -76,7 +77,7 @@ def mur_reader(jobID):
 
     if len(files) == 0:
         print('No results found. Exiting...')
-        updateStatus(db, cur, jobID, 'error')
+        updateStatus(db, cur, jobID, 'failed')
         exit(1)
 
     # PACKAGE THE RESULTS    
@@ -118,10 +119,8 @@ def mur_reader(jobID):
     if len(data['images']) == 0:
         exit('No data in bounds after file reads.')
 
+    setData(data, jobInfo, start_time, jobID, chunkID)
+    updateStatus(db, cur, jobID, 'complete', chunkID=chunkID, jobEnd=True)
     closeDB(db)
-    setData(r, data, jobInfo, start_time, jobID)
-    
-    return
 
-    
-    
+    return
