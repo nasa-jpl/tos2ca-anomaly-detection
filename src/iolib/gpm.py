@@ -476,7 +476,7 @@ def gpm_curator(jobID, chunkID):
 
 def gpm_curator_stationary(jobID, chunkID):
     """
-    Function to cruate data for MERRA-2, working on multiple datasets.
+    Function to cruate data for GPM, working on multiple datasets.
     This will read data from S3, and subset it to the bounds of the anomaly.  It provides
     data for three time steps (t-1, t, t+1) to make sure there is data for temporal interpolation.
     This is a special use-case implementation of the curtor that can be used to generate long term
