@@ -2,6 +2,8 @@ import s3fs
 import xarray as xr
 import netCDF4 as nc
 import numpy as np
+import h5netcdf
+import json
 
 from database.connection import openDB, closeDB
 from database.queries import deleteChunks
@@ -9,6 +11,73 @@ from utils.helpers import get_json, getInterpolationHierarchy, getCurationHierar
 from utils.s3 import s3Upload, s3DeleteChunks
 from collections import Counter
 from utils import tos2ca_secrets
+
+
+def copy_variable_streaming(var, outvar, chunk_size=100):
+    """
+    Copy variable data from xarray.DataArray to netCDF4.Variable in chunks.
+    """
+    shape = var.shape
+    if len(shape) == 0:
+        outvar[...] = var.values
+        return
+
+    n = shape[0]  # first dimension
+    for start in range(0, n, chunk_size):
+        stop = min(start + chunk_size, n)
+        slicer = (slice(start, stop),) + (slice(None),) * (len(shape) - 1)
+
+        data_chunk = var[slicer].values  # lazy load only this slice
+        outvar[slicer] = data_chunk
+
+
+def copy_group_recursive(src, dst, chunk_size=100):
+    """
+    Recursively copy group structure, variables, and attributes
+    from a netCDF4 group (src) to another (dst).
+    """
+    # 1. Copy dimensions
+    for dname, dim in src.dimensions.items():
+        if dname not in dst.dimensions:
+            dst.createDimension(dname, (len(dim) if not dim.isunlimited() else None))
+
+    # 2. Copy variables
+    for vname, var in src.variables.items():
+        if vname in dst.variables:
+            continue
+        outvar = dst.createVariable(vname, var.datatype, var.dimensions)
+        outvar.setncatts({k: var.getncattr(k) for k in var.ncattrs()})
+        copy_variable_streaming(xr.DataArray(var[:]), outvar, chunk_size=chunk_size)
+
+    # 3. Copy attributes
+    dst.setncatts({k: src.getncattr(k) for k in src.ncattrs()})
+
+    # 4. Copy subgroups
+    for subname, subgrp in src.groups.items():
+        new_subgrp = dst.createGroup(subname)
+        copy_group_recursive(subgrp, new_subgrp, chunk_size)
+
+
+def group_to_dict_simple(filename):
+    """
+    Recursively convert a netCDF4.Group into dict of subgroups and variable names.
+    """
+    info = {}
+    data = nc.Dataset(filename, 'r')
+    for groupName in data.groups.keys():
+        if groupName == 'navigation':
+            info[groupName] = list(data[groupName].variables.keys())
+        else:
+            info[groupName] = {}
+            if not data[groupName].groups.keys():
+                continue
+            for subgroupName in data[groupName].groups.keys():
+                if not data[groupName][subgroupName].variables.keys():
+                    continue
+                for variable in data[groupName][subgroupName].variables.keys():
+                    info[groupName][subgroupName] = [variable]
+
+    return info
 
 
 def combineCuratedFiles(jobID):
@@ -227,6 +296,7 @@ def combineInterpolatedFiles(jobID):
 
     timestampList = []
     for i in chunkList:
+        print('Processing %s' % fileDict[i]['interpolated hierarchy'])
         j = get_json(fileDict[i]['interpolated hierarchy'])
         for t in j:
             if t != 'navigation':
@@ -281,6 +351,100 @@ def combineInterpolatedFiles(jobID):
     jsonFilename = getInterpolationHierarchy(jobID, None, interpolationHierarchy)
     uploadInfo = {}
     uploadInfo['filename'] = jsonFilename
+    uploadInfo['type'] = 'interpolated hierarchy'
+    uploadInfo['startDateTime'] = startDate
+    s3Upload(jobID, uploadInfo, bucketName, db, cur)
+
+    closeDB(db)
+
+    return
+
+
+def mergeInterpolatedFiles(jobID):
+    """
+    Function to take chunked interpolated files and stitch them into a single file
+    This is an alternative to combineInterpolatedFiles above.
+    This should be used for larger jobs, probably shouldn't try to process more than
+    one year's worth of data at a time.
+    :param jobID: jobID of the curation job
+    :type jobID: int
+    """
+    secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
+    bucketName = secret.get("bucket")
+    
+    db, cur = openDB()
+
+    sql = 'SELECT startDate FROM jobs WHERE jobID=(SELECT phdefJobID FROM jobs WHERE jobID=%s)'
+    cur.execute(sql, jobID)
+    results = cur.fetchone()
+    startDate = results['startDate']
+
+    sql = 'SELECT chunkID FROM chunks WHERE jobID=%s'
+    cur.execute(sql, jobID)
+    results = cur.fetchall()
+    print(results)
+    chunkList = []
+    for chunkID in results:
+        chunkList.append(chunkID['chunkID'])
+
+    fileList = []
+    for chunkID in chunkList:
+        sql = 'SELECT location FROM output WHERE jobID=%s AND location="s3://%s/%s/%s-%s-Interpolated-Data.nc4"' % (jobID, bucketName, jobID, jobID, chunkID)
+        cur.execute(sql)
+        results = cur.fetchone()
+        if len(results) < 1:
+            exit('Could not find a file for: %s' % chunkID)
+        else:
+            fileList.append(results['location'])
+
+    closeDB(db)
+
+    ncFilename = '/data/tmp/%s-Interpolated-Data.nc4' % (jobID)
+    print(ncFilename)
+
+    fs = s3fs.S3FileSystem()
+
+    merged_groups = {}
+
+    for path in fileList:
+        with fs.open(path, "rb") as fobj:
+            with h5netcdf.File(fobj, "r") as h5file:
+                for gname in h5file.groups.keys():
+                    if gname in merged_groups:
+                        print(f"Skipping group '{gname}' in {path} (already loaded)")
+                        continue
+                    merged_groups[gname] = path
+
+    print(f"Found {len(merged_groups)} unique top-level groups across {len(fileList)} files")
+
+    with nc.Dataset(ncFilename, "w") as dst:
+        for gname, src_path in merged_groups.items():
+            print(f"Writing group: {gname} from {src_path}")
+            with fs.open(src_path, "rb") as fobj:
+                with nc.Dataset("inmemory", memory=fobj.read()) as src:
+                    src_grp = src.groups[gname]
+                    new_grp = dst.createGroup(gname)
+                    copy_group_recursive(src_grp, new_grp, chunk_size=100)
+
+    json_file = "/data/tmp/%s-Interpolation-Hierarchy.json" % (jobID)
+    
+    structure = group_to_dict_simple(ncFilename)
+
+    with open(json_file, "w") as f:
+        json.dump(structure, f)
+
+    print(f"JSON structure written to {json_file}")
+
+    db, cur = openDB()
+
+    uploadInfo = {}
+    uploadInfo['filename'] = ncFilename
+    uploadInfo['type'] = 'interpolated subset'
+    uploadInfo['startDateTime'] = startDate
+    s3Upload(jobID, uploadInfo, bucketName, db, cur)
+
+    uploadInfo = {}
+    uploadInfo['filename'] = json_file
     uploadInfo['type'] = 'interpolated hierarchy'
     uploadInfo['startDateTime'] = startDate
     s3Upload(jobID, uploadInfo, bucketName, db, cur)
