@@ -1,8 +1,8 @@
 -- MySQL dump 10.19  Distrib 10.3.39-MariaDB, for Linux (x86_64)
 --
--- Host: tos2cadev1.ctznfzbiztp3.us-west-2.rds.amazonaws.com    Database: tos2ca
+-- Database: tos2ca
 -- ------------------------------------------------------
--- Server version	8.0.40
+-- Server version	8.0.42
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -69,15 +69,19 @@ CREATE TABLE `jobs` (
   `coords` geometry DEFAULT NULL,
   `startDate` datetime DEFAULT NULL,
   `endDate` datetime DEFAULT NULL,
+  `algorithm` enum('fortracc','auxgeoir') DEFAULT NULL,
   `ineqOperator` varchar(75) DEFAULT NULL,
   `ineqValue` float DEFAULT NULL,
+  `warmerToggle` enum('on','off') DEFAULT NULL,
+  `warmerValue` float DEFAULT NULL,
   `description` text,
   `status` varchar(250) NOT NULL,
   `submitTime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `climatology` tinyint(1) DEFAULT '0',
   PRIMARY KEY (`jobID`),
   KEY `userID` (`userID`),
   CONSTRAINT `jobs_ibfk_1` FOREIGN KEY (`userID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=513 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=617 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -97,7 +101,7 @@ CREATE TABLE `output` (
   UNIQUE KEY `location` (`location`),
   KEY `jobID` (`jobID`),
   CONSTRAINT `output_ibfk_1` FOREIGN KEY (`jobID`) REFERENCES `jobs` (`jobID`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=62580 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=2708694 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -168,4 +172,4 @@ CREATE TABLE `users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-07-09 22:33:59
+-- Dump completed on 2025-11-20 20:16:53

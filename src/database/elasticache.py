@@ -86,6 +86,28 @@ def setFortraccData(fortraccData, jobID, chunkID):
     return
 
 
+def setAuxGeoIRData(auxgeoirData, jobID, chunkID):
+    """
+    Function to store AuxGEOIR data in Elasticache.  It 
+    turns the dict objects into bytes first, so that there are no TypeErrors
+    when loading the data into Redis. Automatically sets expiry time for each
+    entry to 1 day.
+    :param fortraccData: processed sparse AuxGeoIR data
+    :type fortraccData: fortracc_module.flow.SparseTimeOrderedSequence
+    :param jobID: the Job ID #
+    :type jobID: int
+    :param chunkID: the Chunk ID #
+    :type chunkID: int
+    """
+    dataToBytes = pkl.dumps(auxgeoirData)
+    compressedDataToBytes = blosc.compress(dataToBytes)
+    r = openCache()
+    r.set('auxgeoir-%s-%s' % (jobID, chunkID), compressedDataToBytes, ex=86400)
+    print('Insert to Elasticache complete')
+
+    return
+
+
 def getData(jobID, chunkID):
     """
     Function to retrieve the data and jobInfo variables in Elasticache.  It 
@@ -138,3 +160,22 @@ def getFortraccData(jobID, chunkID):
     fortraccData = pkl.loads(dataBack)
     
     return fortraccData
+
+
+def getAuxGeoIRData(jobID, chunkID):
+    """
+    Function to retrieve the AuxGeoIR data from Elasticache.  It 
+    converts the variables back from bytes to dicts when loading the data out of Redis.
+    :param jobID: the Job ID #
+    :type jobID: int
+    :param chunkID: the Chunk ID #
+    :type chunkID: int
+    :return fortraccData: data from AuxGeoIR
+    :type fortraccData: fortracc_module.flow.SparseTimeOrderedSequence
+    """
+    r = openCache()
+    compressedDataBack = r.get('auxgeoir-%s-%s' % (jobID, chunkID))
+    dataBack = blosc.decompress(compressedDataBack)
+    getAuxGeoIRData = pkl.loads(dataBack)
+    
+    return getAuxGeoIRData
