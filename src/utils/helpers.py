@@ -60,6 +60,30 @@ def getFortraccHierarchy(filename):
 
     return jsonFilename
 
+def getAuxGeoIRHierarchy(filename):
+    """
+    Function to read a AuxGeoIR Mask Output file and create a json 
+    file of the internal hierarchy. 
+    :param filename: filename of the AuxGeoIR mask output file, with path
+    :type filename: str
+    :return auxgeoirHierarchyFile: filename of the JSON hierarchy file, with path
+    :type auxgeoirHierarchyFile: str
+    """
+    jsonFilename = filename.split('.')[0] + '-Hierarchy.json'
+    ncFile = nc.Dataset(filename, 'r')
+    hierarchy = {}
+
+    hierarchy['navigation']  = ['lat','lon']
+    hierarchy['masks'] = {}
+
+    for t in ncFile['masks'].groups:
+        hierarchy['masks'][t] = ['mask_indices']
+    
+    with open(jsonFilename, 'w') as outfile:
+        json.dump(hierarchy, outfile)
+
+    return jsonFilename
+
 def getCurationHierarchy(jobID, chunkID, info):
     """
     Function to read a curated file and create a json 

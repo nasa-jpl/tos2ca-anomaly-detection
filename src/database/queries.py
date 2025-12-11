@@ -13,10 +13,10 @@ def getJobInfo(cur, jobID, chunkID=False):
     :type results: dict
     """
     if chunkID != False:
-        sql = 'SELECT j.dataset, j.variable, ST_ASTEXT(j.coords) AS coords, c.startDate, c.endDate, j.ineqOperator, j.ineqValue, j.phdefJobID, j.stage, c.status, j.nChunks, c.chunkID FROM jobs j, chunks c WHERE j.jobID=c.jobID AND c.chunkID=%s AND c.jobID=%s' 
+        sql = 'SELECT j.dataset, j.variable, ST_ASTEXT(j.coords) AS coords, c.startDate, c.endDate, j.algorithm, j.ineqOperator, j.ineqValue, j.warmerToggle, j.warmerValue, j.phdefJobID, j.stage, c.status, j.nChunks, c.chunkID FROM jobs j, chunks c WHERE j.jobID=c.jobID AND c.chunkID=%s AND c.jobID=%s' 
         args = (chunkID, jobID)  
     else:
-        sql = 'SELECT dataset, variable, ST_ASTEXT(coords) AS coords, startDate, endDate, ineqOperator, ineqValue, phdefJobID, stage, status, nChunks FROM jobs WHERE jobID=%s' 
+        sql = 'SELECT dataset, variable, ST_ASTEXT(coords) AS coords, startDate, endDate, algorithm, ineqOperator, ineqValue, warmerToggle, warmerValue, phdefJobID, stage, status, nChunks FROM jobs WHERE jobID=%s' 
         args = (jobID)         
     cur.execute(sql, args)
     results = cur.fetchall()
@@ -95,7 +95,8 @@ def updateStatus(db, cur, jobID, status, chunkID=False, jobStart=False, jobEnd=F
     """
     if chunkID == False:
         if status not in ['pending', 'running', 'reading', 
-                          'fortracc', 'plotting', 'complete', 'failed']:
+                          'fortracc', 'auxgeoir', 'plotting', 
+                          'complete', 'failed']:
             exit('Invalid status')
         
         args = (status, jobID)
