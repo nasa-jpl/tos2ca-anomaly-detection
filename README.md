@@ -10,14 +10,15 @@ This python library is responsible for:
 - Taking user input about an inequality, variables, temporal bounds, and geospatial bounds
 - Retrieving subsetted data matching that user input
 - Converting that data to a binary format in a time-ordered sequence
-- Passing the data to ForTraCC
-- Using the masks produced by ForTraCC to retrieve curated data of interest to the user
+- Passing the data to ForTraCC or AUX-GeoIR
+- Using the masks produced by ForTraCC or AUX-GeoIR to retrieve curated data of interest to the user
 - Interpolating any curated data onto a common grid
 
 ## Requirements
 
 - Access to the TOS2CA [data dictionaries](https://github.com/nasa-jpl/tos2ca-data-dictionaries)
 - [ForTraCC](https://github.com/nasa-jpl/tos2ca-fortracc-module)
+- [AUX-GeoIR](https://github.com/nasa-jpl/tos2ca-aux-geoir)
 - See the [requirements.txt](requirements.txt) file for required Python libraries
 - Access to AWS services (see [Resources](docs/Resources.md))
 
@@ -34,8 +35,8 @@ Running the library in an end-to-end fashion requires the following steps:
 03. Request and/or read the data, returning a subset based on the user input.
 04. Format the data into a dict type and convert it to binary.
 05. Store the read data in Elasticache.
-06. Call the ForTraCC operator class that will start the ForTraCC job, reading the data from Elasticache and converting it back from binary to dict.
-07. Deposit the ForTraCC output into Elasticache.
+06. Call the ForTraCC or AUX-GeoI operator class that will start the job, reading the data from Elasticache and converting it back from binary to dict.
+07. Deposit the ForTraCC or AUX-GeoIR output into Elasticache.
 08. Stitch the output netCDF-4 file together and deposit it in S3.
 08. Create plots and GeoJSON polygons of the anomalies.
 09. Upload the plots and GeoJSON to S3.
