@@ -7,7 +7,7 @@ name = "tos2ca"
 version = "2.1"
 description = "TOS2CA Anomaly Detection Library"
 readme = "README.md"
-requires-python = "==3.9"
+requires-python = "==3.9.23"
 license = { text = "Apache 2.0" }
 authors = [
   { name = "Brian Knosp", email = "Brian.Knosp@jpl.nasa.gov" }
