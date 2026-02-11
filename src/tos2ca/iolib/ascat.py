@@ -25,8 +25,8 @@ import s3fs
 import xarray as xr
 import pandas as pd
 from datetime import datetime, timedelta
-from shapely import Point, MultiPoint, wkt, Polygon
-from shapely.geometry import CAP_STYLE, JOIN_STYLE
+from shapely import wkt
+from shapely.geometry import CAP_STYLE, JOIN_STYLE, Point, MultiPoint, Polygon
 import shapely as sp
 import numpy as np
 import time, re
