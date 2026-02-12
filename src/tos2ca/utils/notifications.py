@@ -1,5 +1,5 @@
 import smtplib
-from database.connection import openDB, closeDB
+from tos2ca.database.connection import openDB, closeDB
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 

@@ -16,11 +16,11 @@ import netCDF4 as nc
 
 from copy import deepcopy
 from datetime import datetime as dt
-from database.connection import openDB, closeDB
-from database.elasticache import getData
-from utils.s3 import s3Upload
-from database.queries import updateStatus
-from utils import tos2ca_secrets
+from tos2ca.database.connection import openDB, closeDB
+from tos2ca.database.elasticache import getData
+from tos2ca.utils.s3 import s3Upload
+from tos2ca.database.queries import updateStatus
+from tos2ca.utils import tos2ca_secrets
 from glob import glob
 from shapely.geometry import Polygon, shape, MultiPolygon
 from matplotlib.colors import ListedColormap

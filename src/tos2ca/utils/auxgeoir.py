@@ -1,16 +1,16 @@
 import json
 import time
 
-from database.connection import openDB, closeDB
-from database.elasticache import getData, setAuxGeoIRData, getAuxGeoIRData
-from database.queries import updateStatus
+from tos2ca.database.connection import openDB, closeDB
+from tos2ca.database.elasticache import getData, setAuxGeoIRData, getAuxGeoIRData
+from tos2ca.database.queries import updateStatus
 from fortracc_module.objects import SparseGeoGrid
 from fortracc_module.utils import write_nc4
 from fortracc_module.chunking import stitch
 from auxgeoir_module.processing import run_storm_tracking_pipeline_for_tos2ca
-from utils.helpers import getAuxGeoIRHierarchy
-from utils.s3 import s3Upload
-from utils import tos2ca_secrets
+from tos2ca.utils.helpers import getAuxGeoIRHierarchy
+from tos2ca.utils.s3 import s3Upload
+from tos2ca.utils import tos2ca_secrets
 
 
 def callAuxGeoIRSparse(jobID, chunkID):

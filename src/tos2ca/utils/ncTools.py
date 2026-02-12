@@ -5,12 +5,12 @@ import numpy as np
 import h5netcdf
 import json
 
-from database.connection import openDB, closeDB
-from database.queries import deleteChunks
-from utils.helpers import get_json, getInterpolationHierarchy, getCurationHierarchy
-from utils.s3 import s3Upload, s3DeleteChunks
+from tos2ca.database.connection import openDB, closeDB
+from tos2ca.database.queries import deleteChunks
+from tos2ca.utils.helpers import get_json, getInterpolationHierarchy, getCurationHierarchy
+from tos2ca.utils.s3 import s3Upload, s3DeleteChunks
 from collections import Counter
-from utils import tos2ca_secrets
+from tos2ca.utils import tos2ca_secrets
 
 
 def copy_variable_streaming(var, outvar, chunk_size=100):

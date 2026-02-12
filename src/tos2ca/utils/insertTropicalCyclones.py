@@ -2,9 +2,9 @@ import pymysql
 import boto3
 import s3fs
 import xarray as xr
-from database.connection import openDB, closeDB
+from tos2ca.database.connection import openDB, closeDB
 from datetime import datetime
-from utils import tos2ca_secrets
+from tos2ca.utils import tos2ca_secrets
 
 def insertTCs():
     """

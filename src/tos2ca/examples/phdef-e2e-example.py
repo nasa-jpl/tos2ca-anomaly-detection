@@ -1,7 +1,7 @@
 import sys
-from iolib.merra2 import merra2_reader
-from utils.plot import mask_plot
-from utils.fortracc import callFortraccSparse, stitchFortracc
+from tos2ca.iolib.merra2 import merra2_reader
+from tos2ca.utils.plot import mask_plot
+from tos2ca.utils.fortracc import callFortraccSparse, stitchFortracc
 
 
 if __name__ == '__main__':

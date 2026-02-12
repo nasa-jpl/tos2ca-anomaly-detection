@@ -5,12 +5,12 @@ import numpy as np
 import math
 import s3fs
 
-from utils import tos2ca_secrets
-from utils.s3 import s3Upload
+from tos2ca.utils import tos2ca_secrets
+from tos2ca.utils.s3 import s3Upload
 from datetime import datetime, timedelta
-from database.connection import openDB, closeDB
+from tos2ca.database.connection import openDB, closeDB
 from glob import glob
-from utils.helpers import get_json
+from tos2ca.utils.helpers import get_json
 
 
 def fullJSON(jobID):

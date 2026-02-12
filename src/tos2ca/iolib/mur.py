@@ -6,10 +6,10 @@ import xarray as xr
 
 from datetime import datetime, timedelta
 from collections import OrderedDict as ODict
-from database.connection import openDB, closeDB
-from database.elasticache import setData
-from database.queries import getJobInfo, updateStatus
-from utils.s3 import s3GetTemporaryCredentials, checkReauth
+from tos2ca.database.connection import openDB, closeDB
+from tos2ca.database.elasticache import setData
+from tos2ca.database.queries import getJobInfo, updateStatus
+from tos2ca.utils.s3 import s3GetTemporaryCredentials, checkReauth
 
 
 def getFileList(phdefJobInfo, creds, location):

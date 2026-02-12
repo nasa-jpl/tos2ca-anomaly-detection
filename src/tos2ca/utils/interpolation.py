@@ -9,12 +9,12 @@ import s3fs
 import json
 
 from netCDF4 import Dataset
-from database.connection import openDB, closeDB
-from database.queries import getJobInfo, updateStatus
-from utils.s3 import s3Upload
+from tos2ca.database.connection import openDB, closeDB
+from tos2ca.database.queries import getJobInfo, updateStatus
+from tos2ca.utils.s3 import s3Upload
 from numpy import round
-from utils.helpers import getInterpolationHierarchy
-from utils import tos2ca_secrets
+from tos2ca.utils.helpers import getInterpolationHierarchy
+from tos2ca.utils import tos2ca_secrets
 
 
 class MASK:

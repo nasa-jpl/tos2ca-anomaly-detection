@@ -1,7 +1,7 @@
 import blosc
 import pickle as pkl
 
-from database.connection import openCache
+from tos2ca.database.connection import openCache
 
 
 def serialize_dict(data):

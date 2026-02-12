@@ -5,12 +5,12 @@ import xarray as xr
 import netCDF4 as nc
 
 from datetime import datetime, timedelta
-from database.connection import openDB, closeDB
-from database.queries import getJobInfo, updateStatus
-from utils.s3 import s3Upload
-from utils.helpers import get_json, pushBox, getCurationHierarchy, timerange, padTimestamps
+from tos2ca.database.connection import openDB, closeDB
+from tos2ca.database.queries import getJobInfo, updateStatus
+from tos2ca.utils.s3 import s3Upload
+from tos2ca.utils.helpers import get_json, pushBox, getCurationHierarchy, timerange, padTimestamps
 from shapely.geometry import MultiPoint
-from utils import tos2ca_secrets
+from tos2ca.utils import tos2ca_secrets
 from herbie import Herbie
 
 

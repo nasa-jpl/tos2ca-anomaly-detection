@@ -7,7 +7,7 @@ import numpy as np
 
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from operators.inequalities import *
+from tos2ca.operators.inequalities import *
 
 
 def getOperatorClass(className):

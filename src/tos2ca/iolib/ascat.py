@@ -33,17 +33,17 @@ import time, re
 import netCDF4 as nc
 from collections import OrderedDict
 import warnings
-from utils.helpers import getCurationHierarchy
-from utils import tos2ca_secrets
+from tos2ca.utils.helpers import getCurationHierarchy
+from tos2ca.utils import tos2ca_secrets
 
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
 utils_dir = '/data/code/anomaly-detection/src'
 if utils_dir not in sys.path:
     sys.path.append(utils_dir)
-from database.connection import openDB, closeDB
-from database.queries import getJobInfo, updateStatus
-from utils.s3 import s3GetTemporaryCredentials, s3Upload
+from tos2ca.database.connection import openDB, closeDB
+from tos2ca.database.queries import getJobInfo, updateStatus
+from tos2ca.utils.s3 import s3GetTemporaryCredentials, s3Upload
     
 class Curation:
     def __init__(self):

@@ -11,8 +11,8 @@ Make sure you chunk with data size in mind for PhDef.
 import pandas as pd
 import json
 import pymysql
-from database.connection import openDB, closeDB
-from database.queries import getJobInfo
+from tos2ca.database.connection import openDB, closeDB
+from tos2ca.database.queries import getJobInfo
 from pandas.tseries.offsets import MonthEnd
 from datetime import timedelta
 

@@ -1,7 +1,7 @@
 import sys
-from iolib.gpm import gpm_curator
-from utils.interpolation import interpolator
-from utils.ncTools import combineCuratedFiles, combineInterpolatedFiles, cleanUpChunks
+from tos2ca.iolib.gpm import gpm_curator
+from tos2ca.utils.interpolation import interpolator
+from tos2ca.utils.ncTools import combineCuratedFiles, combineInterpolatedFiles, cleanUpChunks
 
 
 if __name__ == '__main__':

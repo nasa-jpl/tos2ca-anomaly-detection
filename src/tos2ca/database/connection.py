@@ -1,6 +1,6 @@
 import pymysql
 from valkey import ValkeyCluster
-from utils import tos2ca_secrets
+from tos2ca.utils import tos2ca_secrets
 
 
 def openDB():
