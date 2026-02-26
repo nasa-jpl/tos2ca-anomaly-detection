@@ -333,8 +333,8 @@ def interpolated_plot_all(jobID, timestamp):
     secret = tos2ca_secrets.get_secret("mysql-tos2causer-tos2ca", "us-west-2")
     bucketName = secret.get("bucket")
 
-    sql = 'SELECT location, type FROM output WHERE jobID=%s AND type IN ("interpolated hierarchy")'
-    cur.execute(sql, jobID)
+    sql = f'SELECT location, type FROM output WHERE jobID={jobID} AND type IN ("interpolated hierarchy") AND location LIKE "%/{jobID}/{jobID}-Interpolat%"'
+    cur.execute(sql)
     results = cur.fetchall()
     print(results)
     for result in results:
@@ -345,7 +345,7 @@ def interpolated_plot_all(jobID, timestamp):
     content_object = s3.Object(interpolatedHierarchyFileParts[2], '/'.join(interpolatedHierarchyFileParts[3:]))
     file_content = content_object.get()['Body'].read().decode('utf-8')
     interpolatedHierarchyInfo = json.loads(file_content)
-    anomaly_num = list(interpolatedHierarchyInfo[timestamp].keys())[:-1]
+    anomaly_num = list(interpolatedHierarchyInfo[timestamp].keys())
     
     fs = s3fs.S3FileSystem()
 
@@ -354,11 +354,13 @@ def interpolated_plot_all(jobID, timestamp):
         lon_array = []
         interp_array = []  
         
+        units = ''
         #loop over anomaly ids for plotting
         for anomaly_id in anomaly_num:  
                 
             print("processing anomaly id: ", anomaly_id)
             ds = xr.open_dataset(fs.open(location, 'rb'), group=timestamp + '/' + anomaly_id)
+            units = ds[variable].Units
 
             data = ds[variable].values[...]
             lat_array = np.append(lat_array, data[:, 0])
@@ -372,7 +374,7 @@ def interpolated_plot_all(jobID, timestamp):
         ax = plt.subplot(111, projection=ccrs.PlateCarree())
         
         plt.scatter(lon_array, lat_array, s = 2, c= interp_array, transform=ccrs.PlateCarree(), cmap = 'jet')
-        plt.colorbar(label = variable + ' ('+ds[variable].Units+')', orientation =  'horizontal', shrink = 0.4, pad = 0.06)
+        plt.colorbar(label = variable + ' ('+ units +')', orientation =  'horizontal', shrink = 0.4, pad = 0.06)
 
         ax.set_yticks(np.arange(min(lat_array),max(lat_array), 5), crs=ccrs.PlateCarree())
         lat_formatter = cticker.LatitudeFormatter()
