@@ -4,7 +4,7 @@
 
 [![Language](https://img.shields.io/badge/python-3.9-blue)](#) [![Language](https://img.shields.io/badge/MySQL-version_8-00758F)](#) [![Language](https://img.shields.io/badge/ValKey-8-blue)](#)
 
-![Build Status](https://github.com/nasa-jpl/tos2ca-anomaly-detection/actions/workflows/build_check.yml/badge.svg)
+[![Build Check](https://github.com/nasa-jpl/tos2ca-anomaly-detection/actions/workflows/build_check.yml/badge.svg)](https://github.com/nasa-jpl/tos2ca-anomaly-detection/actions/workflows/build_check.yml)
 
 The ``anomaly-detection`` library is part of the of the TOS2CA Project.  For more information, visit the TOS2CA website at [https://nasa-jpl.github.io/tos2ca-documentation/](https://nasa-jpl.github.io/tos2ca-documentation/).  
 
