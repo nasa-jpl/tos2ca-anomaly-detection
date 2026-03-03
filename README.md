@@ -16,14 +16,25 @@ This python library is responsible for:
 - Using the masks produced by ForTraCC or AUX-GeoIR to retrieve curated data of interest to the user
 - Interpolating any curated data onto a common grid
 
+TOS2CA was designed to be modular, allowing the user to drop in new [readers](/src/tos2ca/iolib/) and [anomaly detection algorithms](/src/tos2ca/utils).  Currently, the two anomaly detection algorithms integrated with TOS2CA are ForTraCC and AUX-GEOIR (see more in [Requirements](#requirements) below).  To add your own,just create a connector in the `utils` folder.
+
+## Installation
+
+To install the TOS2CA Anomaly Detection package, first install Python 3.9.20 in your favoriate enviornment manager, like `conda` or `venv`.  The install the libary with PIP.
+
+```sh
+pip install git+https://github.com/nasa-jpl/tos2ca-anomaly-detection.git
+```
+
+Installing this way will install all Python dependencies, includucing the TOS2CA FortraCC Module and AUX-GEOIR Storm Tracking Algorithm listed in [requirements](#requirements).
+
 ## Requirements
 
-- Access to the TOS2CA [data dictionaries](https://github.com/nasa-jpl/tos2ca-data-dictionaries)
+- Access to the TOS2CA [data dictionaries](https://github.com/nasa-jpl/tos2ca-data-dictionaries) (stored locally in `/data/code/data-dictionaries/`)
 - [ForTraCC](https://github.com/nasa-jpl/tos2ca-fortracc-module)
 - [AUX-GeoIR](https://github.com/nasa-jpl/tos2ca-aux-geoir)
-- See the [requirements.txt](requirements.txt) file for required Python libraries
+- See the [requirements.txt](requirements.txt) if you want to take a look at the required Python packages
 - Access to AWS services (see [Resources](docs/Resources.md))
-
 
 ## Library Flow
 
@@ -59,6 +70,16 @@ Running the library in an end-to-end fashion requires the following steps:
 08. User can make plots of individual anomalies at spcific timestamps using the interpolated file.
 The user can continue on to visualization tools, download the data, or exit the system here.
 
+## Notes
+
 ### Job Chunking
 
 All stages of TOS2CA can be run in chunks to parallelize the processing tasks.  If you do not wish to run the jobs in chunks, you will essentially have 1 chunk, which will be indiated in the database.  If you do want to chunk, you can split the job up into *n* chunks as you wish.  It is easiest to split chunks up by hour or by the timestep of the data.  Once you have all the chunk output for the mask, curated, and interpolated data, there are functions in this library to stitch them back together.
+
+### Containers
+
+If you are interested in running TOS2CA in containers (especially if you are [chunking](#job-chunking) the jobs), see the [TOS2CA Containerization repository](https://github.com/nasa-jpl/tos2ca-containerization) for examples of how to build images for different parts of TOS2CA.
+
+
+## UI and Visualization Tools
+There are user interface tools (website and APIs) as well as web-based visualization tools that are not part of this install.  Se the [TOS2CA Documentation](https://nasa-jpl.github.io/tos2ca-documentation/) page for additional information.

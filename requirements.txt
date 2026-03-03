@@ -1,3 +1,4 @@
+tos2ca-aux-geoir @ git+https://github.com/nasa-jpl/tos2ca-aux-geoir.git
 blosc==1.11.2
 boto3==1.24.28
 botocore==1.27.59
@@ -5,6 +6,7 @@ cartopy==0.22.0
 cryptography==39.0.1
 dask==2024.8.0
 fastparquet==2024.11.0
+tos2ca-fortracc-module @ git+https://github.com/nasa-jpl/tos2ca-fortracc-module.git
 geojson==3.0.1
 geos==0.2.3
 h5netcdf==1.2.0
