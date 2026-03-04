@@ -9,6 +9,7 @@
 The ``anomaly-detection`` library is part of the of the TOS2CA Project.  For more information, visit the TOS2CA website at [https://nasa-jpl.github.io/tos2ca-documentation/](https://nasa-jpl.github.io/tos2ca-documentation/).  
 
 This python library is responsible for:
+
 - Taking user input about an inequality, variables, temporal bounds, and geospatial bounds
 - Retrieving subsetted data matching that user input
 - Converting that data to a binary format in a time-ordered sequence
@@ -30,6 +31,7 @@ Installing this way will install all Python dependencies, includucing the TOS2CA
 
 ## Requirements
 
+- Will need an [NASA Earthdata login](https://urs.earthdata.nasa.gov/) to use any tools DAAC tools/applications (and have credentials in a `.netrc` file -- see `templates/.netrc` template in this repo)
 - Access to the TOS2CA [data dictionaries](https://github.com/nasa-jpl/tos2ca-data-dictionaries) (stored locally in `/data/code/data-dictionaries/`)
 - [ForTraCC](https://github.com/nasa-jpl/tos2ca-fortracc-module)
 - [AUX-GeoIR](https://github.com/nasa-jpl/tos2ca-aux-geoir)
