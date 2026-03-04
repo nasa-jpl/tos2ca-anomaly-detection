@@ -72,6 +72,16 @@ Running the library in an end-to-end fashion requires the following steps:
 08. User can make plots of individual anomalies at spcific timestamps using the interpolated file.
 The user can continue on to visualization tools, download the data, or exit the system here.
 
+## Examples
+
+Functions from this package are called in the following manner:
+
+```python
+from tos2ca.iolib.gpm import gpm_curator
+```
+
+Please see the `examples/` folder for some example scripts and sample notebooks.
+
 ## Notes
 
 ### Job Chunking
@@ -82,6 +92,5 @@ All stages of TOS2CA can be run in chunks to parallelize the processing tasks.  
 
 If you are interested in running TOS2CA in containers (especially if you are [chunking](#job-chunking) the jobs), see the [TOS2CA Containerization repository](https://github.com/nasa-jpl/tos2ca-containerization) for examples of how to build images for different parts of TOS2CA.
 
-
-## UI and Visualization Tools
+### UI and Visualization Tools
 There are user interface tools (website and APIs) as well as web-based visualization tools that are not part of this install.  Se the [TOS2CA Documentation](https://nasa-jpl.github.io/tos2ca-documentation/) page for additional information.
