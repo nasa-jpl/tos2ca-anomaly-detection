@@ -35,3 +35,9 @@ jobs:
         pip install dist/*.whl
         python -c "import tos2ca; print('Import successful!')"
         python -c "from tos2ca import iolib; print('Submodule iolib loaded!')"
+
+    - name: Install test dependencies
+      run: pip install pytest pytest-mock
+
+    - name: Run unit tests
+      run: pytest
