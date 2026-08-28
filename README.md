@@ -1,6 +1,6 @@
 # Anomaly Detection
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17664955.svg)](https://doi.org/10.5281/zenodo.17664955)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22149467.svg)](https://doi.org/10.5281/zenodo.22149467)
 
 [![Language](https://img.shields.io/badge/python-3.9-blue)](#) [![Language](https://img.shields.io/badge/MySQL-version_8-00758F)](#) [![Language](https://img.shields.io/badge/ValKey-8-blue)](#)
 
