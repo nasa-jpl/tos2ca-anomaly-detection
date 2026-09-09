@@ -21,7 +21,7 @@ TOS2CA was designed to be modular, allowing the user to drop in new [readers](/s
 
 ## Installation
 
-To install the TOS2CA Anomaly Detection package, first install Python 3.9.20 in your favorite environment manager, like `conda` or `venv`.  The install the library with PIP.
+To install the TOS2CA Anomaly Detection package, first install Python 3.9.20 in your favorite environment manager, like `conda` or `venv`.  Then install the library with PIP.
 
 ```sh
 pip install git+https://github.com/nasa-jpl/tos2ca-anomaly-detection.git
