@@ -1,4 +1,5 @@
 import json
+import os
 import time
 
 from tos2ca.database.connection import openDB, closeDB
@@ -8,7 +9,11 @@ from fortracc_module.objects import SparseGeoGrid
 from fortracc_module.utils import write_nc4
 from fortracc_module.chunking import stitch
 from auxgeoir_module.processing import run_storm_tracking_pipeline_for_tos2ca
-from tos2ca.utils.helpers import getAuxGeoIRHierarchy
+from tos2ca.utils.helpers import (
+    getAuxGeoIRHierarchy,
+    getMaskFilenames,
+    setMaskAlgorithm,
+)
 from tos2ca.utils.s3 import s3Upload
 from tos2ca.utils import tos2ca_secrets
 
@@ -90,25 +95,32 @@ def stitchAuxGeoIR(jobID):
     stos = stitch(results)
     print('Writing netCDF output...')
     metadata = {'jobID': jobID, 'variable': jobInfo['variable'], 'dataset': jobInfo['dataset'], 'threshold': str(jobInfo['ineqValue'])}
-    anomaly_table = write_nc4(stos, f'{jobID}-AuxGeoIR-Mask-Output.nc4', output_dir='/data/tmp', metadata=metadata)
+    maskFilenames = getMaskFilenames(jobID)
+    anomaly_table = write_nc4(
+        stos,
+        os.path.basename(maskFilenames['output']),
+        output_dir=os.path.dirname(maskFilenames['output']),
+        metadata=metadata
+    )
+    setMaskAlgorithm(maskFilenames['output'], jobInfo['algorithm'])
     print('Writing JSON table of contents...')
     toc = json.dumps(anomaly_table)
-    with open('/data/tmp/' + str(jobID) + '-AuxGeoIR-TOC.json', 'w') as f:
+    with open(maskFilenames['toc'], 'w') as f:
         f.write(toc)
     print('Uploading TOC file to S3...')
     db, cur = openDB()
-    jobInfo = {'filename': f'/data/tmp/{jobID}-AuxGeoIR-TOC.json',
+    jobInfo = {'filename': maskFilenames['toc'],
                 'startDateTime': startDateTime,
                 'type': 'toc'}
     s3Upload(jobID, jobInfo, bucketName, db, cur)
     print('Creating and uploading hierarchy JSON file...')
-    jsonFilename = getAuxGeoIRHierarchy(f'/data/tmp/{jobID}-AuxGeoIR-Mask-Output.nc4')
+    jsonFilename = getAuxGeoIRHierarchy(maskFilenames['output'])
     jobInfo = {'filename': jsonFilename,
                 'startDateTime': startDateTime,
                 'type': 'hierarchy'}
     s3Upload(jobID, jobInfo, bucketName, db, cur)
     print('Uploading nc4 Mask file to S3...')
-    jobInfo = {'filename': f'/data/tmp/{jobID}-AuxGeoIR-Mask-Output.nc4',
+    jobInfo = {'filename': maskFilenames['output'],
                 'startDateTime': startDateTime,
                 'type': 'masks'}
     s3Upload(jobID, jobInfo, bucketName, db, cur)

@@ -6,6 +6,8 @@ from shapely.geometry import MultiPoint
 
 from tos2ca.utils.helpers import (
     getOperatorClass,
+    getMaskFilenames,
+    setMaskAlgorithm,
     padTimestamps,
     gridPolygons,
     pushBox,
@@ -26,6 +28,29 @@ from tos2ca.operators.inequalities import (
     equalToSparse,
     anomalyEventSparse,
 )
+
+
+class TestMaskOutputs:
+    def test_generic_filenames(self, tmp_path):
+        filenames = getMaskFilenames(47, str(tmp_path))
+
+        assert filenames == {
+            'output': str(tmp_path / '47-Masks-Output.nc4'),
+            'toc': str(tmp_path / '47-Masks-TOC.json')
+        }
+
+    @pytest.mark.parametrize('algorithm', ['ForTraCC', 'AuxGeoIR'])
+    def test_algorithm_is_recorded_in_netcdf_metadata(self, tmp_path, algorithm):
+        import netCDF4 as nc
+
+        filename = tmp_path / '47-Masks-Output.nc4'
+        with nc.Dataset(filename, 'w'):
+            pass
+
+        setMaskAlgorithm(filename, algorithm)
+
+        with nc.Dataset(filename, 'r') as ncFile:
+            assert ncFile.algorithm == algorithm
 
 
 # ---------------------------------------------------------------------------
