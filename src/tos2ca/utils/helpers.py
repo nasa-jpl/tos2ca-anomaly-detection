@@ -1,4 +1,5 @@
 import json
+import os
 import netCDF4 as nc
 import s3fs
 import pandas as pd
@@ -8,6 +9,21 @@ import numpy as np
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from tos2ca.operators.inequalities import *
+
+
+def getMaskFilenames(jobID, outputDir='/data/tmp'):
+    """Return the generic output paths used by anomaly mask algorithms."""
+    basename = f'{jobID}-Masks'
+    return {
+        'output': os.path.join(outputDir, f'{basename}-Output.nc4'),
+        'toc': os.path.join(outputDir, f'{basename}-TOC.json')
+    }
+
+
+def setMaskAlgorithm(filename, algorithm):
+    """Record the algorithm that produced a completed mask netCDF file."""
+    with nc.Dataset(str(filename), 'a') as ncFile:
+        ncFile.algorithm = algorithm
 
 
 def getOperatorClass(className):

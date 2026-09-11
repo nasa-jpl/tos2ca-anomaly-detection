@@ -1,8 +1,8 @@
 """
 Note that ASCAT data is not currently setup to be run in a chunked
 fashion.
-1. Read table of content e.g. 47-ForTraCC-TOC.json (Nanomalies)
-2. Read output hierarchy, e.g. 47-ForTraCC-Mask-Output-Hierarchy.json
+1. Read table of content e.g. 47-Masks-TOC.json (Nanomalies)
+2. Read output hierarchy, e.g. 47-Masks-Output-Hierarchy.json
    This gives the netcdf output file group hierarchy. This is needed
    because we need to read the file remotely, on S3. For this purpose,
    we use `xarray` which does not provide means to get this hierarchy
@@ -10,7 +10,7 @@ fashion.
    Note: Nmasks can be smaller than Nanomalies, e.g. 96 < 585. In other
    words, there can be several anomalies per mask.
 3. Get mask(s) indices from the netcdf output file e.g.,
-   47-ForTraCC-Mask-Output.nc4: 0 <= mask_ix < Nmasks.
+   47-Masks-Output.nc4: 0 <= mask_ix < Nmasks.
 4. Read data curation dictionary e.g., tos2ca-data-collection-dictionary.json
    IMPORTANT: the location of this file is not fixed yet (07/19/2023).
 5. Choose anomaly from from the table of content TOC file. Those anomalies
